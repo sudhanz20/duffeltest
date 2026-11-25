@@ -2,7 +2,7 @@
   "name": "duffeltest",
   "version": "1.0.0",
   "private": true,
-  "description": "Local test playground for the Duffel API (flights, stays, payments, webhooks)",
+  "description": "Duffel flights test playground: search, book, cancel, live webhooks",
   "main": "server.js",
   "type": "commonjs",
   "engines": { "node": ">=18" },

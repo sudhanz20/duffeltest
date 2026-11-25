@@ -1,4 +1,4 @@
-// Duffel test playground: a small Express server.
+// Duffel flights playground: a small Express server. Runs locally or on Vercel.
 // It keeps the API key on the server, proxies the calls the page needs,
 // receives Duffel webhooks, checks their signature, and streams them to the page (SSE).
 
@@ -27,6 +27,19 @@ function broadcast(kind, payload) {
   const line = `data: ${JSON.stringify(evt)}\n\n`;
   for (const res of clients) res.write(line);
 }
+
+// Optional password. Set PLAYGROUND_PASSWORD when the app is on a public URL (e.g. Vercel),
+// otherwise anyone with the link can book on your Duffel account. /webhook stays open for Duffel.
+const PASSWORD = process.env.PLAYGROUND_PASSWORD || '';
+app.use((req, res, next) => {
+  if (!PASSWORD || req.path === '/webhook') return next();
+  const [scheme, encoded] = (req.get('Authorization') || '').split(' ');
+  const pass = scheme === 'Basic' && encoded ? Buffer.from(encoded, 'base64').toString().split(':').slice(1).join(':') : '';
+  const a = crypto.createHash('sha256').update(pass).digest();
+  const b = crypto.createHash('sha256').update(PASSWORD).digest();
+  if (crypto.timingSafeEqual(a, b)) return next();
+  res.set('WWW-Authenticate', 'Basic realm="Duffel playground"').status(401).send('Password required');
+});
 
 app.get('/events', (req, res) => {
   res.set({
@@ -214,68 +227,6 @@ app.post(
   })
 );
 
-// ---------------- Stays ----------------
-app.post(
-  '/api/stays/search',
-  route(async (req) => {
-    const { latitude, longitude, radius = 5, check_in_date, check_out_date, adults = 1, rooms = 1 } = req.body;
-    const out = await duffel('POST', '/stays/search', {
-      location: {
-        radius: Number(radius),
-        geographic_coordinates: { latitude: Number(latitude), longitude: Number(longitude) },
-      },
-      check_in_date,
-      check_out_date,
-      rooms: Number(rooms),
-      guests: Array.from({ length: Number(adults) || 1 }, () => ({ type: 'adult' })),
-    });
-    return { results: (out.data.results || []).slice(0, 30) };
-  })
-);
-
-app.post(
-  '/api/stays/rates/:searchResultId',
-  route(async (req) =>
-    duffel('POST', `/stays/search_results/${encodeURIComponent(req.params.searchResultId)}/actions/fetch_all_rates`)
-  )
-);
-
-app.post('/api/stays/quotes', route(async (req) => duffel('POST', '/stays/quotes', { rate_id: req.body.rate_id })));
-
-app.post(
-  '/api/stays/bookings',
-  route(async (req) => {
-    const { quote_id, given_name, family_name, email, phone_number } = req.body;
-    return duffel('POST', '/stays/bookings', {
-      quote_id,
-      email,
-      phone_number,
-      guests: [{ given_name, family_name }],
-    });
-  })
-);
-
-app.post(
-  '/api/stays/bookings/:id/cancel',
-  route(async (req) => duffel('POST', `/stays/bookings/${encodeURIComponent(req.params.id)}/actions/cancel`))
-);
-
-// ---------------- Payments ----------------
-app.post(
-  '/api/payments/intents',
-  route(async (req) => duffel('POST', '/payments/payment_intents', { amount: String(req.body.amount), currency: req.body.currency }))
-);
-
-app.get(
-  '/api/payments/intents/:id',
-  route(async (req) => duffel('GET', `/payments/payment_intents/${encodeURIComponent(req.params.id)}`))
-);
-
-app.post(
-  '/api/payments/intents/:id/confirm',
-  route(async (req) => duffel('POST', `/payments/payment_intents/${encodeURIComponent(req.params.id)}/actions/confirm`))
-);
-
 // ---------------- Webhook management ----------------
 const ALL_EVENTS = [
   'order.created',
@@ -291,20 +242,24 @@ const ALL_EVENTS = [
   'air.airline_credit.created',
   'air.airline_credit.spent',
   'air.airline_credit.invalidated',
-  'stays.booking.created',
-  'stays.booking.cancelled',
-  'stays.booking_creation_failed',
   'ping.triggered',
 ];
 
 // Save a value into .env so it survives restarts.
+// On Vercel the filesystem is read-only, so this returns false there.
 function saveEnv(key, value) {
+  if (process.env.VERCEL) return false;
   const file = path.join(__dirname, '.env');
   let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
   const line = `${key}=${value}`;
   const re = new RegExp(`^${key}=.*$`, 'm');
   text = re.test(text) ? text.replace(re, line) : `${text.trimEnd()}\n${line}\n`;
-  fs.writeFileSync(file, text);
+  try {
+    fs.writeFileSync(file, text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 app.get('/api/webhooks', route(async () => duffel('GET', '/air/webhooks')));
@@ -322,8 +277,8 @@ app.post(
     const out = await duffel('POST', '/air/webhooks', { url, events: ALL_EVENTS });
     // Duffel shows the secret only once. Use it now and keep it in .env.
     webhookSecret = out.data.secret;
-    saveEnv('DUFFEL_WEBHOOK_SECRET', webhookSecret);
-    return out;
+    const saved = saveEnv('DUFFEL_WEBHOOK_SECRET', webhookSecret);
+    return { ...out, savedToEnvFile: saved };
   })
 );
 
@@ -334,7 +289,9 @@ app.post(
 
 app.delete('/api/webhooks/:id', route(async (req) => duffel('DELETE', `/air/webhooks/${encodeURIComponent(req.params.id)}`)));
 
-app.listen(PORT, () => {
+module.exports = app; // Vercel imports the app
+
+if (require.main === module) app.listen(PORT, () => {
   console.log(`\nDuffel playground running at http://localhost:${PORT}\n`);
   if (!API_KEY) console.warn('WARNING: DUFFEL_API_KEY is not set. Copy .env.example to .env and add it.');
   else if (!API_KEY.startsWith('duffel_test_')) console.warn('WARNING: this is NOT a test token. Real bookings and charges can happen.');

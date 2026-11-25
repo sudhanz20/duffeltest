@@ -48,9 +48,14 @@ $$('.tabs button').forEach((b) =>
 // Default dates: a few weeks ahead.
 const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
 $('#flight-search [name=departure_date]').value = day(30);
-$('#stay-search [name=check_in_date]').value = day(30);
-$('#stay-search [name=check_out_date]').value = day(32);
 $$('.port').forEach((el) => (el.textContent = location.port || '80'));
+// On a public host (e.g. Vercel) Duffel can reach this page directly: no tunnel needed.
+const isLocal = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
+if (!isLocal && location.protocol === 'https:') {
+  $('#wh-create [name=url]').value = location.origin;
+  $('#wh-public-hint').hidden = false;
+  $('#wh-local-steps').hidden = true;
+}
 
 // ---------------- Status ----------------
 async function loadStatus() {
@@ -118,122 +123,15 @@ $('#flight-cancel').addEventListener('submit', (e) => {
   });
 });
 
-// ---------------- Stays ----------------
-$('#stay-search').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const out = $('#stay-results');
-  busy($('button', form), async () => {
-    out.innerHTML = '<p class="muted">Searching…</p>';
-    const r = await api('POST', '/api/stays/search', formData(form));
-    if (!r.results.length) return (out.innerHTML = '<p class="muted">No results.</p>');
-    out.innerHTML = r.results
-      .map((x) => `<div class="item"><div><b>${esc(x.accommodation?.name)}</b>
-        <div class="meta">${esc(x.accommodation?.location?.address?.line_one || '')}</div><div class="meta"><code>${esc(x.id)}</code></div></div>
-        <div><div class="price">from ${esc(x.cheapest_rate_total_amount)} ${esc(x.cheapest_rate_currency)}</div>
-        <button class="small" data-srr="${esc(x.id)}">Get rates</button></div></div>`)
-      .join('');
-  });
-});
-
-$('#stay-results').addEventListener('click', (e) => {
-  const id = e.target.dataset.srr;
-  if (!id) return;
-  const out = $('#stay-rates');
-  busy(e.target, async () => {
-    out.innerHTML = '<p class="muted">Fetching rates…</p>';
-    const r = await api('POST', `/api/stays/rates/${encodeURIComponent(id)}`);
-    const rows = [];
-    for (const room of r.data.accommodation?.rooms || []) {
-      for (const rate of room.rates || []) {
-        rows.push(`<div class="item"><div><b>${esc(room.name)}</b>
-          <div class="meta">${esc(rate.board_type || '')} · ${esc(rate.payment_type || '')}${rate.cancellation_timeline?.length ? ' · refundable' : ''}</div>
-          <div class="meta"><code>${esc(rate.id)}</code></div></div>
-          <div><div class="price">${esc(rate.total_amount)} ${esc(rate.total_currency)}</div><button class="small" data-rate="${esc(rate.id)}">Quote</button></div></div>`);
-      }
-    }
-    out.innerHTML = rows.join('') || '<p class="muted">No rates.</p>';
-  });
-});
-
-async function createQuote(rateId, btn) {
-  await busy(btn, async () => {
-    const r = await api('POST', '/api/stays/quotes', { rate_id: rateId });
-    setField($('#stay-book'), 'quote_id', r.data.id);
-    toast(`Quote ${r.data.id}: ${r.data.total_amount} ${r.data.total_currency}`);
-  });
-}
-
-$('#stay-rates').addEventListener('click', (e) => {
-  const id = e.target.dataset.rate;
-  if (!id) return;
-  setField($('#stay-book'), 'rate_id', id);
-  createQuote(id, e.target);
-  $('#stay-book').scrollIntoView({ behavior: 'smooth' });
-});
-
-$('#stay-quote-btn').addEventListener('click', (e) => {
-  const id = $('#stay-book [name=rate_id]').value.trim();
-  if (!id) return toast('Enter a rate ID first.', true);
-  createQuote(id, e.target);
-});
-
-$('#stay-book').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const form = e.target;
-  busy($('button[type=submit]', form), async () => {
-    const r = await api('POST', '/api/stays/bookings', formData(form));
-    setField($('#stay-cancel'), 'booking_id', r.data.id);
-    toast(`Booking ${r.data.id}: ${r.data.status}`);
-  });
-});
-
-$('#stay-cancel').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const form = e.target;
-  busy($('button', form), async () => {
-    const d = formData(form);
-    const r = await api('POST', `/api/stays/bookings/${encodeURIComponent(d.booking_id)}/cancel`);
-    toast(`Booking ${r.data.id}: ${r.data.status}`);
-  });
-});
-
-// ---------------- Payments ----------------
-$('#pi-create').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const form = e.target;
-  busy($('button', form), async () => {
-    const r = await api('POST', '/api/payments/intents', formData(form));
-    setField($('#pi-confirm'), 'id', r.data.id);
-    toast(`Payment Intent ${r.data.id}: ${r.data.status}`);
-  });
-});
-
-$('#pi-get').addEventListener('click', (e) => {
-  const id = $('#pi-confirm [name=id]').value.trim();
-  if (!id) return toast('Enter a Payment Intent ID.', true);
-  busy(e.target, async () => {
-    const r = await api('GET', `/api/payments/intents/${encodeURIComponent(id)}`);
-    toast(`Status: ${r.data.status}`);
-  });
-});
-
-$('#pi-confirm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const form = e.target;
-  busy($('button[type=submit]', form), async () => {
-    const r = await api('POST', `/api/payments/intents/${encodeURIComponent(formData(form).id)}/confirm`);
-    toast(`Status: ${r.data.status}`);
-  });
-});
-
 // ---------------- Webhooks ----------------
 $('#wh-create').addEventListener('submit', (e) => {
   e.preventDefault();
   const form = e.target;
   busy($('button', form), async () => {
     const r = await api('POST', '/api/webhooks', formData(form));
-    toast(`Webhook ${r.data.id} registered. Secret saved to .env.`);
+    toast(r.savedToEnvFile
+      ? `Webhook ${r.data.id} registered. Secret saved to .env.`
+      : `Webhook ${r.data.id} registered. Copy its secret from the live feed into DUFFEL_WEBHOOK_SECRET.`);
     loadStatus();
     listWebhooks();
   });

@@ -3,19 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Duffel Playground</title>
+  <title>Duffel Flights Playground</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
-    <h1>Duffel Playground</h1>
+    <h1>Duffel Flights Playground</h1>
     <div id="status" class="status">Checking setup…</div>
   </header>
 
   <nav class="tabs">
     <button data-tab="flights" class="active">Flights</button>
-    <button data-tab="stays">Stays</button>
-    <button data-tab="payments">Payments</button>
     <button data-tab="webhooks">Webhook setup</button>
   </nav>
 
@@ -62,67 +60,11 @@
         </form>
       </div>
 
-      <!-- STAYS -->
-      <div class="tab hidden" id="tab-stays">
-        <p class="hint">Stays must be enabled on your Duffel account. If you get a 403 or "not enabled" error, request access from Duffel.</p>
-        <h2>1. Search accommodation</h2>
-        <form id="stay-search" class="grid">
-          <label>Latitude <input name="latitude" value="51.5071" required /></label>
-          <label>Longitude <input name="longitude" value="-0.1416" required /></label>
-          <label>Radius (km) <input name="radius" type="number" value="5" min="1" /></label>
-          <label>Check-in <input name="check_in_date" type="date" required /></label>
-          <label>Check-out <input name="check_out_date" type="date" required /></label>
-          <label>Adults <input name="adults" type="number" value="1" min="1" /></label>
-          <label>Rooms <input name="rooms" type="number" value="1" min="1" /></label>
-          <button type="submit">Search stays</button>
-        </form>
-        <p class="hint">Default coordinates are London, where the "Duffel Test Hotel" lives in test mode.</p>
-        <div id="stay-results" class="list"></div>
-
-        <h2>2. Rates</h2>
-        <div id="stay-rates" class="list"><p class="muted">Click "Get rates" on a search result.</p></div>
-
-        <h2>3. Quote and book</h2>
-        <form id="stay-book" class="grid">
-          <label class="wide">Rate ID <input name="rate_id" placeholder="rat_… (click Quote above)" /></label>
-          <button type="button" id="stay-quote-btn">Create quote</button>
-          <label class="wide">Quote ID <input name="quote_id" placeholder="quo_…" required /></label>
-          <label>Given name <input name="given_name" value="Amelia" required /></label>
-          <label>Family name <input name="family_name" value="Earhart" required /></label>
-          <label>Email <input name="email" type="email" value="amelia@example.com" required /></label>
-          <label>Phone (E.164) <input name="phone_number" value="+442080160509" required /></label>
-          <button type="submit">Create booking</button>
-        </form>
-
-        <h2>4. Cancel booking</h2>
-        <form id="stay-cancel" class="grid">
-          <label class="wide">Booking ID <input name="booking_id" placeholder="bok_…" required /></label>
-          <button type="submit" class="danger">Cancel booking</button>
-        </form>
-      </div>
-
-      <!-- PAYMENTS -->
-      <div class="tab hidden" id="tab-payments">
-        <p class="hint">Duffel Payments must be enabled on your account. A Payment Intent is only half the flow: the card is collected in the browser with Duffel's card component using the <code>client_token</code>, then you confirm.</p>
-        <h2>1. Create Payment Intent</h2>
-        <form id="pi-create" class="grid">
-          <label>Amount <input name="amount" value="100.00" required /></label>
-          <label>Currency <input name="currency" value="GBP" maxlength="3" required /></label>
-          <button type="submit">Create intent</button>
-        </form>
-        <h2>2. Check or confirm</h2>
-        <form id="pi-confirm" class="grid">
-          <label class="wide">Payment Intent ID <input name="id" placeholder="pit_…" required /></label>
-          <button type="button" id="pi-get">Get status</button>
-          <button type="submit">Confirm intent</button>
-        </form>
-        <p class="hint">Confirm fails until a card has been attached with the <code>client_token</code>. That error is expected and shows the flow is wired correctly.</p>
-      </div>
-
       <!-- WEBHOOKS -->
       <div class="tab hidden" id="tab-webhooks">
         <h2>Receive webhooks</h2>
-        <ol class="steps">
+        <p class="hint" id="wh-public-hint" hidden>This page is on a public URL, so no tunnel is needed. The URL below is already filled in.</p>
+        <ol class="steps" id="wh-local-steps">
           <li>Duffel cannot reach <code>localhost</code>. Start a tunnel in a second terminal:<br />
             <code>npx cloudflared tunnel --url http://localhost:<span class="port">3000</span></code><br />
             or <code>ngrok http <span class="port">3000</span></code></li>
@@ -133,6 +75,7 @@
           <label class="wide">Tunnel URL <input name="url" placeholder="https://something.trycloudflare.com" required /></label>
           <button type="submit">Register webhook</button>
         </form>
+        <p class="hint">On Vercel the server cannot write <code>.env</code>. Copy the <code>secret</code> from the live feed into the <code>DUFFEL_WEBHOOK_SECRET</code> environment variable and redeploy.</p>
         <p class="hint">Tunnel URLs change on each restart of a free tunnel. Register again when it changes, and delete the old webhook.</p>
         <button id="wh-list">List my webhooks</button>
         <div id="wh-list-out" class="list"></div>
