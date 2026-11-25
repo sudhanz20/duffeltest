@@ -1,7 +1,8 @@
 // Home page: hero, search form, recent searches and destinations.
-import { $, $$, esc, api, toast, fmtDay, ymd, addDays, today, ICON, CABIN_LABEL, img, cityImg, DESTINATIONS } from './util.js';
+import { $, $$, esc, api, toast, fmtDay, ymd, addDays, today, ICON, CABIN_LABEL, img, cityImg, DESTINATIONS, store } from './util.js';
 import { state, persist, go, recentSearches, addRecent, clearRecent, paxCount } from './state.js';
 import { createCalendar } from './calendar.js';
+import { mountAi } from './ai.js';
 
 const AIRLINES = [
   ['BA', 'British Airways Executive Club'],
@@ -44,6 +45,11 @@ export function renderHome(view) {
         <p class="eyebrow">Nomad · Flights</p>
         <h1>The world, <em>beautifully</em> arranged.</h1>
         <p class="lede">Compare every cabin, mix them across your trip, and book in a few calm steps.</p>
+        <div class="mode-switch" role="tablist">
+          <button type="button" data-mode="classic">Search</button>
+          <button type="button" data-mode="ai">${ICON.spark} Ask Nomad</button>
+        </div>
+        <div class="search-card ai-card hidden" id="ai"></div>
         <form class="search-card" id="search" autocomplete="off">
           <div class="trip-toggle" role="tablist">
             <button type="button" data-trip="return">Return</button>
@@ -347,10 +353,36 @@ export function renderHome(view) {
     const badLoyalty = s.loyalty.find((l) => l.number && (!l.givenName || !l.familyName));
     if (badLoyalty) return toast('Each frequent flyer programme needs the member’s first and last name.', 'err');
     s.loyalty = s.loyalty.filter((l) => l.number);
+    s.prefs = null; // AI preferences apply only to AI searches
     persist('search');
     addRecent(s);
     go('#/results');
   });
+
+  // ---------- Ask Nomad (AI search) ----------
+  function setMode(mode) {
+    store.set('nomad.mode', mode);
+    $$('[data-mode]', view).forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
+    $('#ai', view).classList.toggle('hidden', mode !== 'ai');
+    form.classList.toggle('hidden', mode === 'ai');
+    if (mode === 'ai') $('#ai-text', view)?.focus();
+  }
+  $$('[data-mode]', view).forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  mountAi($('#ai', view), {
+    onSearch(found) {
+      Object.assign(s, found);
+      persist('search');
+      addRecent(s);
+      go('#/results');
+    },
+    onUseForm(found) {
+      for (const [k, v] of Object.entries(found)) if (v !== null && v !== undefined) s[k] = v;
+      persist('search');
+      paint();
+      setMode('classic');
+    },
+  });
+  setMode(store.get('nomad.mode', 'classic'));
 
   // ---------- Recent searches ----------
   function paintRecent() {

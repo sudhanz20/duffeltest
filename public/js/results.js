@@ -215,8 +215,35 @@ export function renderResults(view) {
       $('#list', view).innerHTML = `<div class="empty"><h3>No flights found</h3><p>Try other dates, a nearby airport or another cabin.</p><a class="btn btn-primary" href="#/">Change search</a></div>`;
       return;
     }
+    applyPrefs();
     paintFilters();
     paintList();
+  }
+
+  // Preferences from Ask Nomad ("cheapest", "nonstop", "under £800") become the starting sort and filters.
+  // Each one is skipped, with a note, if no flight could match it.
+  let prefsDone = false;
+  function applyPrefs() {
+    const p = s.prefs;
+    if (prefsDone || !p) return;
+    prefsDone = true;
+    const skipped = [];
+    if (SORTS[p.sort]) sortKey = p.sort;
+    if (p.directOnly) {
+      if (data.offers.some((o) => o.slices.every((sl) => sl.stops === 0))) f.stops.add('0');
+      else skipped.push('no direct flights were found');
+    }
+    if (p.refundable) {
+      if (data.offers.some((o) => o.refundable)) f.refundable = true;
+      else skipped.push('no refundable fares were found');
+    }
+    if (p.maxPrice) {
+      const cur = data.offers[0].currency;
+      if (p.currency && p.currency.toUpperCase() !== cur) skipped.push(`your budget is in ${p.currency.toUpperCase()} but prices are in ${cur}`);
+      else if (data.offers.some((o) => o.total <= p.maxPrice)) f.maxPrice = Math.ceil(p.maxPrice);
+      else skipped.push(`nothing costs under ${money(p.maxPrice, cur)}`);
+    }
+    if (skipped.length) $('#note', view).insertAdjacentHTML('beforeend', `<div class="notice">Ask Nomad filters were relaxed because ${esc(skipped.join(', and '))}.</div>`);
   }
 
   // ---------- Events ----------

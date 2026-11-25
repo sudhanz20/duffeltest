@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
+const { registerAi } = require('./ai');
 
 const PORT = Number(process.env.PORT) || 3000;
 const API_KEY = process.env.DUFFEL_API_KEY || '';
@@ -175,6 +176,8 @@ app.get('/api/status', (req, res) => {
     webhookSecretSet: Boolean(webhookSecret),
   });
 });
+
+registerAi(app, { duffel, broadcast, route, fail });
 
 // ---------------------------------------------------------------------------
 // Places (airport and city lookup)

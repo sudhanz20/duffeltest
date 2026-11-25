@@ -9,6 +9,7 @@ A flight search and booking app built on the Duffel API. It runs in Duffel test 
 - **Frequent flyer.** Add loyalty numbers per adult. Airlines may return member fares.
 - **Cabins.** Economy, Premium, Business, First, or Any. You can also pick a different cabin each way.
 - **Sorting.** Recommended, Comfort, Cheapest and Fastest. Filters for stops, price, refundability and airline.
+- **Ask Nomad.** Describe a trip in plain words. Claude fills in the search, flags every guess, and asks about anything missing. You correct it in words or in the form, then search.
 - **Recent searches.** Saved in your browser and shown on the home page.
 - **Checkout.** Traveller details with passport-name and age checks, then a payment page.
 - **Payment methods.** Card, Apple Pay, Google Pay, PayPal, Pay later and Agency balance.
@@ -23,6 +24,7 @@ A flight search and booking app built on the Duffel API. It runs in Duffel test 
 | Search, booking, hold and pay later, date and cabin changes, cancellation | Real Duffel API calls in test mode |
 | Card, Apple Pay, Google Pay, PayPal | Simulated. Every method settles from your Duffel test balance. |
 | Name corrections | Simulated. Duffel's API cannot rename a passenger; airlines do it by hand. Nomad stores the request in your browser. |
+| Ask Nomad | Real Claude API call. Uses `claude-haiku-5-5`, the cheapest model, unless you set `ANTHROPIC_MODEL`. Needs `ANTHROPIC_API_KEY`. Without it the tab shows a notice and the classic search still works. |
 | Mixed cabins (for example Business out, Economy back) | Real, but sold as two one-way tickets with two booking references. Airlines rarely sell this as one ticket. If the second ticket fails, Nomad cancels the first. |
 
 Book **Duffel Airways** flights in test mode. They book, change and cancel reliably. Other airlines can fail in test mode.
@@ -47,6 +49,8 @@ Open **http://localhost:3000**.
 2. Add these environment variables before you deploy:
    - `DUFFEL_API_KEY`: your `duffel_test_…` token.
    - `PLAYGROUND_PASSWORD`: any password. Without it, anyone with the URL can book on your Duffel account.
+   - `ANTHROPIC_API_KEY` (optional): turns on Ask Nomad. Each request is one Claude call.
+   - `ANTHROPIC_MODEL` (optional): the Claude model for Ask Nomad. Default `claude-haiku-5-5`.
 3. Deploy and open the URL. Any username works with the password.
 
 ## Webhooks
@@ -64,9 +68,10 @@ The server checks `X-Duffel-Signature` (HMAC-SHA256 over `<timestamp>.<raw body>
 
 ## Files
 
+- `ai.js`: Ask Nomad. Sends the request to Claude, checks the answer, and looks up the airports.
 - `server.js`: Express server. Duffel calls, search scoring, bookings, changes, cancellations, webhooks, live feed.
 - `public/index.html`: page shell.
 - `public/css/nomad.css`: the Nomad design.
-- `public/js/`: `search.js` (home and search form), `calendar.js`, `results.js`, `checkout.js`, `trips.js` (My bookings and Manage booking), `dev.js`, `state.js`, `util.js`.
+- `public/js/`: `search.js` (home and search form), `ai.js` (Ask Nomad), `calendar.js`, `results.js`, `checkout.js`, `trips.js` (My bookings and Manage booking), `dev.js`, `state.js`, `util.js`.
 
 Photos come from Unsplash. Airline logos come from Duffel.
