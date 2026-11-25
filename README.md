@@ -1,30 +1,31 @@
-# Duffel Flights Playground
+# Nomad
 
-A small web page and Node server for testing Duffel flights in test mode.
+A flight search and booking app built on the Duffel API. It runs in Duffel test mode.
 
-- Search offers, select one, book it (instant or hold), and cancel it.
-- Receive Duffel webhooks at `/webhook`, check the signature, and show them live on the page.
-- See every API request and response on the page. You do not need the terminal.
+## What it does
 
-Your API key stays on the server. The browser never sees it.
+- **Search.** Airport and city lookup, a date-range calendar, one way or return.
+- **Travellers.** Adults, children with their ages, and infants on a lap. Up to 9 people.
+- **Frequent flyer.** Add loyalty numbers per adult. Airlines may return member fares.
+- **Cabins.** Economy, Premium, Business, First, or Any. You can also pick a different cabin each way.
+- **Sorting.** Recommended, Comfort, Cheapest and Fastest. Filters for stops, price, refundability and airline.
+- **Recent searches.** Saved in your browser and shown on the home page.
+- **Checkout.** Traveller details with passport-name and age checks, then a payment page.
+- **Payment methods.** Card, Apple Pay, Google Pay, PayPal, Pay later and Agency balance.
+- **My bookings.** Look up by reference and last name, or see every booking.
+- **Manage booking.** Pay for a held booking, change a flight's date or cabin, cancel with a refund quote, and request a name correction.
+- **Developer drawer.** A live feed of every Duffel call and webhook, plus webhook setup.
 
-## Deploy on Vercel
+## What is real and what is simulated
 
-1. In Vercel, click **Add New → Project** and import `sudhanz20/duffeltest`. Keep the defaults. Vercel detects Express.
-2. Before you deploy, add these **Environment Variables**:
-   - `DUFFEL_API_KEY`: your `duffel_test_…` token.
-   - `PLAYGROUND_PASSWORD`: any password. Without it, anyone with the URL can book on your Duffel account.
-3. Click **Deploy**, then open the URL. The browser asks for a password. Any username works.
-4. Open **Webhook setup**. The URL is already filled in, so you need no tunnel. Click **Register webhook**.
-5. Duffel shows the webhook secret only once. Copy `secret` from the response in the live feed.
-   Add it in Vercel as `DUFFEL_WEBHOOK_SECRET`, then redeploy.
-6. Click **List my webhooks**, then **Ping**. A `ping.triggered` event appears with a green **verified** badge.
+| Feature | Status |
+|---|---|
+| Search, booking, hold and pay later, date and cabin changes, cancellation | Real Duffel API calls in test mode |
+| Card, Apple Pay, Google Pay, PayPal | Simulated. Every method settles from your Duffel test balance. |
+| Name corrections | Simulated. Duffel's API cannot rename a passenger; airlines do it by hand. Nomad stores the request in your browser. |
+| Mixed cabins (for example Business out, Economy back) | Real, but sold as two one-way tickets with two booking references. Airlines rarely sell this as one ticket. If the second ticket fails, Nomad cancels the first. |
 
-### Known limit on Vercel
-
-The live feed lives in server memory. Vercel can run more than one copy of the server.
-If a webhook lands on a different copy than the one your page is connected to, you will not see it.
-For one person testing, this is usually fine. If events go missing, run it locally, or add a shared store such as Redis.
+Book **Duffel Airways** flights in test mode. They book, change and cancel reliably. Other airlines can fail in test mode.
 
 ## Run locally
 
@@ -40,31 +41,32 @@ npm start
 
 Open **http://localhost:3000**.
 
-Duffel cannot reach `localhost`, so webhooks need a tunnel:
+## Deploy on Vercel
 
-```bash
-npx cloudflared tunnel --url http://localhost:3000
-# or: ngrok http 3000
-```
+1. In Vercel, click **Add New → Project** and import this repository. Keep the defaults.
+2. Add these environment variables before you deploy:
+   - `DUFFEL_API_KEY`: your `duffel_test_…` token.
+   - `PLAYGROUND_PASSWORD`: any password. Without it, anyone with the URL can book on your Duffel account.
+3. Deploy and open the URL. Any username works with the password.
 
-Paste the `https://…` URL into **Webhook setup** and click **Register webhook**.
-Locally, the server writes the secret into `.env` for you.
-Free tunnel URLs change every restart. Register the new URL and delete the old webhook.
+## Webhooks
 
-## How webhook verification works
+Open **Developer → Webhooks**.
 
-Duffel sends `X-Duffel-Signature: t=<timestamp>,v1=<signature>`.
-The server computes HMAC-SHA256 over `<timestamp>.<raw body>` with the secret, as hex, and compares in constant time.
-Events with a bad or missing signature still show on the page, marked **UNVERIFIED**, and get a 401 reply.
-Redelivered events (same `idempotency_key`) are marked **duplicate**.
+- **On Vercel**, the URL is filled in. Click **Register webhook**. Copy `secret` from the live feed into the `DUFFEL_WEBHOOK_SECRET` setting, then redeploy.
+- **Locally**, Duffel cannot reach `localhost`. Run `npx cloudflared tunnel --url http://localhost:3000`, paste the https URL, and register. The secret is saved to `.env` for you.
 
-## Test-mode tips
+Then click **Ping**. A `ping.triggered` event appears in the live feed, marked **verified**.
 
-- Book **Duffel Airways (ZZ)** offers. They always book and cancel in test mode. The search lists them first.
-- The header shows "Test key" in green when the key is loaded. It shows "LIVE key" in red for a live token, which makes real bookings.
+The server checks `X-Duffel-Signature` (HMAC-SHA256 over `<timestamp>.<raw body>`). Events that fail the check still show, marked **UNVERIFIED**, and get a 401.
+
+**Known limit on Vercel:** the live feed lives in server memory. Vercel can run several copies of the server, so a webhook can land on a copy your page is not connected to. If events go missing, run locally or add a shared store such as Redis.
 
 ## Files
 
-- `server.js`: Express server, Duffel calls, webhook receiver, live feed (Server-Sent Events). Exports the app for Vercel.
-- `public/`: the page (`index.html`, `app.js`, `style.css`). No build step.
-- `.env.example`: settings template. `.env` is git-ignored.
+- `server.js`: Express server. Duffel calls, search scoring, bookings, changes, cancellations, webhooks, live feed.
+- `public/index.html`: page shell.
+- `public/css/nomad.css`: the Nomad design.
+- `public/js/`: `search.js` (home and search form), `calendar.js`, `results.js`, `checkout.js`, `trips.js` (My bookings and Manage booking), `dev.js`, `state.js`, `util.js`.
+
+Photos come from Unsplash. Airline logos come from Duffel.
