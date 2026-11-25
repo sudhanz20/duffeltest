@@ -59,8 +59,10 @@ export function renderTrips(view) {
         box.innerHTML = `<div class="empty"><h3>No bookings yet</h3><p>Your trips will appear here.</p><a class="btn btn-primary" href="#/">Find a flight</a></div>`;
         return;
       }
-      const upcoming = r.orders.filter((o) => !o.cancelledAt && status(o)[0] !== 'past');
-      const other = r.orders.filter((o) => !upcoming.includes(o));
+      const dep = (o) => (o.slices[0] && o.slices[0].departingAt) || '';
+      const upcoming = r.orders.filter((o) => !o.cancelledAt && status(o)[0] !== 'past').sort((x, y) => dep(x).localeCompare(dep(y)));
+      const cancelled = r.orders.filter((o) => o.cancelledAt).sort((x, y) => String(y.cancelledAt).localeCompare(String(x.cancelledAt)));
+      const completed = r.orders.filter((o) => !o.cancelledAt && status(o)[0] === 'past').sort((x, y) => dep(y).localeCompare(dep(x)));
       const card = (o) => {
         const [cls, label] = status(o);
         const a = o.slices[0];
@@ -71,9 +73,15 @@ export function renderTrips(view) {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px"><span class="small"><span class="muted">Ref</span> <b style="letter-spacing:.08em">${esc(o.reference)}</b></span>${logoHtml(o.owner, 24)}</div>
           </div></a>`;
       };
+      const section = (name, list, empty, first) =>
+        `<section class="trip-group" data-group="${name.toLowerCase()}">
+          <h2 class="serif" style="font-weight:400;font-size:24px;margin:${first ? 0 : 34}px 0 12px">${name} <span class="muted small" style="font-family:Inter,sans-serif">${list.length}</span></h2>
+          ${list.length ? `<div class="trips">${list.map(card).join('')}</div>` : `<p class="small muted" style="margin:0">${empty}</p>`}
+        </section>`;
       box.innerHTML =
-        (upcoming.length ? `<h2 class="serif" style="font-weight:400;font-size:24px;margin:0 0 12px">Upcoming</h2><div class="trips">${upcoming.map(card).join('')}</div>` : '') +
-        (other.length ? `<h2 class="serif" style="font-weight:400;font-size:24px;margin:34px 0 12px">Past and cancelled</h2><div class="trips">${other.map(card).join('')}</div>` : '');
+        section('Upcoming', upcoming, 'No upcoming trips. <a href="#/">Find a flight</a>.', true) +
+        section('Cancelled', cancelled, 'No cancelled bookings.') +
+        (completed.length ? section('Completed', completed, '') : '');
     })
     .catch((e) => {
       if (alive) $('#trips', view).innerHTML = `<div class="notice bad">${esc(e.message)}</div>`;
