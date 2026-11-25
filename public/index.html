@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Duffel Playground</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Duffel Playground</h1>
+    <div id="status" class="status">Checking setup…</div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="flights" class="active">Flights</button>
+    <button data-tab="stays">Stays</button>
+    <button data-tab="payments">Payments</button>
+    <button data-tab="webhooks">Webhook setup</button>
+  </nav>
+
+  <main>
+    <section class="panel-left">
+      <!-- FLIGHTS -->
+      <div class="tab" id="tab-flights">
+        <h2>1. Search offers</h2>
+        <form id="flight-search" class="grid">
+          <label>From <input name="origin" value="LHR" maxlength="3" required /></label>
+          <label>To <input name="destination" value="JFK" maxlength="3" required /></label>
+          <label>Depart <input name="departure_date" type="date" required /></label>
+          <label>Return (optional) <input name="return_date" type="date" /></label>
+          <label>Adults <input name="adults" type="number" min="1" max="9" value="1" /></label>
+          <label>Cabin
+            <select name="cabin_class">
+              <option>economy</option><option>premium_economy</option><option>business</option><option>first</option>
+            </select>
+          </label>
+          <button type="submit">Search offers</button>
+        </form>
+        <p class="hint">Tip: in test mode, look for <b>Duffel Airways (ZZ)</b>. Its offers book and cancel reliably.</p>
+        <div id="flight-offers" class="list"></div>
+
+        <h2>2. Book selected offer</h2>
+        <form id="flight-book" class="grid">
+          <label class="wide">Offer ID <input name="offer_id" placeholder="off_… (click Select above)" required /></label>
+          <label>Title <select name="title"><option>mr</option><option>ms</option><option>mrs</option><option>miss</option><option>dr</option></select></label>
+          <label>Gender <select name="gender"><option value="m">m</option><option value="f">f</option></select></label>
+          <label>Given name <input name="given_name" value="Amelia" required /></label>
+          <label>Family name <input name="family_name" value="Earhart" required /></label>
+          <label>Born on <input name="born_on" type="date" value="1987-07-24" required /></label>
+          <label>Email <input name="email" type="email" value="amelia@example.com" required /></label>
+          <label>Phone (E.164) <input name="phone_number" value="+442080160509" required /></label>
+          <label class="check"><input type="checkbox" name="hold" /> Hold (pay later) instead of instant</label>
+          <button type="submit">Create order</button>
+        </form>
+
+        <h2>3. Cancel order</h2>
+        <form id="flight-cancel" class="grid">
+          <label class="wide">Order ID <input name="order_id" placeholder="ord_…" required /></label>
+          <label class="check"><input type="checkbox" name="quoteOnly" /> Only get the refund quote (do not confirm)</label>
+          <button type="submit" class="danger">Cancel order</button>
+        </form>
+      </div>
+
+      <!-- STAYS -->
+      <div class="tab hidden" id="tab-stays">
+        <p class="hint">Stays must be enabled on your Duffel account. If you get a 403 or "not enabled" error, request access from Duffel.</p>
+        <h2>1. Search accommodation</h2>
+        <form id="stay-search" class="grid">
+          <label>Latitude <input name="latitude" value="51.5071" required /></label>
+          <label>Longitude <input name="longitude" value="-0.1416" required /></label>
+          <label>Radius (km) <input name="radius" type="number" value="5" min="1" /></label>
+          <label>Check-in <input name="check_in_date" type="date" required /></label>
+          <label>Check-out <input name="check_out_date" type="date" required /></label>
+          <label>Adults <input name="adults" type="number" value="1" min="1" /></label>
+          <label>Rooms <input name="rooms" type="number" value="1" min="1" /></label>
+          <button type="submit">Search stays</button>
+        </form>
+        <p class="hint">Default coordinates are London, where the "Duffel Test Hotel" lives in test mode.</p>
+        <div id="stay-results" class="list"></div>
+
+        <h2>2. Rates</h2>
+        <div id="stay-rates" class="list"><p class="muted">Click "Get rates" on a search result.</p></div>
+
+        <h2>3. Quote and book</h2>
+        <form id="stay-book" class="grid">
+          <label class="wide">Rate ID <input name="rate_id" placeholder="rat_… (click Quote above)" /></label>
+          <button type="button" id="stay-quote-btn">Create quote</button>
+          <label class="wide">Quote ID <input name="quote_id" placeholder="quo_…" required /></label>
+          <label>Given name <input name="given_name" value="Amelia" required /></label>
+          <label>Family name <input name="family_name" value="Earhart" required /></label>
+          <label>Email <input name="email" type="email" value="amelia@example.com" required /></label>
+          <label>Phone (E.164) <input name="phone_number" value="+442080160509" required /></label>
+          <button type="submit">Create booking</button>
+        </form>
+
+        <h2>4. Cancel booking</h2>
+        <form id="stay-cancel" class="grid">
+          <label class="wide">Booking ID <input name="booking_id" placeholder="bok_…" required /></label>
+          <button type="submit" class="danger">Cancel booking</button>
+        </form>
+      </div>
+
+      <!-- PAYMENTS -->
+      <div class="tab hidden" id="tab-payments">
+        <p class="hint">Duffel Payments must be enabled on your account. A Payment Intent is only half the flow: the card is collected in the browser with Duffel's card component using the <code>client_token</code>, then you confirm.</p>
+        <h2>1. Create Payment Intent</h2>
+        <form id="pi-create" class="grid">
+          <label>Amount <input name="amount" value="100.00" required /></label>
+          <label>Currency <input name="currency" value="GBP" maxlength="3" required /></label>
+          <button type="submit">Create intent</button>
+        </form>
+        <h2>2. Check or confirm</h2>
+        <form id="pi-confirm" class="grid">
+          <label class="wide">Payment Intent ID <input name="id" placeholder="pit_…" required /></label>
+          <button type="button" id="pi-get">Get status</button>
+          <button type="submit">Confirm intent</button>
+        </form>
+        <p class="hint">Confirm fails until a card has been attached with the <code>client_token</code>. That error is expected and shows the flow is wired correctly.</p>
+      </div>
+
+      <!-- WEBHOOKS -->
+      <div class="tab hidden" id="tab-webhooks">
+        <h2>Receive webhooks</h2>
+        <ol class="steps">
+          <li>Duffel cannot reach <code>localhost</code>. Start a tunnel in a second terminal:<br />
+            <code>npx cloudflared tunnel --url http://localhost:<span class="port">3000</span></code><br />
+            or <code>ngrok http <span class="port">3000</span></code></li>
+          <li>Paste the public <code>https://…</code> URL it prints below and click Register. The server adds <code>/webhook</code>, subscribes to all events, and saves the secret into <code>.env</code>.</li>
+          <li>Click Ping. A <code>ping.triggered</code> event should appear in the live feed with a green "verified" badge.</li>
+        </ol>
+        <form id="wh-create" class="grid">
+          <label class="wide">Tunnel URL <input name="url" placeholder="https://something.trycloudflare.com" required /></label>
+          <button type="submit">Register webhook</button>
+        </form>
+        <p class="hint">Tunnel URLs change on each restart of a free tunnel. Register again when it changes, and delete the old webhook.</p>
+        <button id="wh-list">List my webhooks</button>
+        <div id="wh-list-out" class="list"></div>
+      </div>
+    </section>
+
+    <section class="panel-right">
+      <div class="feed-head">
+        <h2>Live feed</h2>
+        <div>
+          <label class="check"><input type="checkbox" id="show-api" checked /> API calls</label>
+          <label class="check"><input type="checkbox" id="show-wh" checked /> Webhooks</label>
+          <button id="clear-feed" class="small">Clear</button>
+        </div>
+      </div>
+      <div id="feed"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
