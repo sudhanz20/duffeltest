@@ -6,6 +6,7 @@ const Anthropic = require('@anthropic-ai/sdk').default;
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
 const CABINS = ['economy', 'premium_economy', 'business', 'first', 'any'];
 const SORTS = ['recommended', 'comfort', 'price', 'fastest', 'greenest'];
+const MAX_LEGS = 6;
 const FEATURES = ['cabinBag', 'wifi', 'wifiFree', 'power', 'flatBed', 'suite', 'legroom', 'priorityBoarding', 'priorityCheckIn', 'seatSelection'];
 
 const str = { type: 'string' };
@@ -14,9 +15,17 @@ const obj = (properties) => ({ type: 'object', properties, required: Object.keys
 
 const PLAN_SCHEMA = obj({
   summary: str,
-  trip: { type: 'string', enum: ['return', 'oneway'] },
+  trip: { type: 'string', enum: ['return', 'oneway', 'multi'] },
   origin: obj({ query: nullable(str), iata: nullable(str) }),
   destination: obj({ query: nullable(str), iata: nullable(str) }),
+  flights: {
+    type: 'array',
+    items: obj({
+      origin: obj({ query: nullable(str), iata: nullable(str) }),
+      destination: obj({ query: nullable(str), iata: nullable(str) }),
+      date: nullable(str),
+    }),
+  },
   depart: nullable(str),
   ret: nullable(str),
   adults: { type: 'integer' },
@@ -61,6 +70,8 @@ How to fill the fields:
 - If the destination is vague ("somewhere warm", "a beach in Europe"), pick the single best match, record that choice in assumptions, and list 3 to 5 other cities in "alternatives".
 - Dates use YYYY-MM-DD and must be after today. Resolve words like "next Friday" or "mid-March" from today's date. "A week" means 7 nights. If the traveller gives no dates, choose sensible ones about a month ahead and record that in assumptions.
 - trip is "oneway" only when the traveller says one way or gives no return. Then ret is null.
+- trip is "multi" (multi-city) when the trip has more than one destination, or flies home from a different city than it landed in. Examples: "London to Paris, then Rome, then home", "into New York, out of Boston". Then fill "flights" with every flight in order, 2 to ${MAX_LEGS} of them, each with its own origin, destination and date. Each flight leaves from where the previous one landed unless the traveller says otherwise (for example they travel overland). "Then home" means a last flight back to the first origin. If they give a length of stay ("3 nights in Paris"), date the next flight that many days later. Set origin to the first flight's origin, destination to the last flight's destination, depart to the first date, and ret to null. For "return" and "oneway" trips, flights is empty.
+- In a multi-city trip, a prefs.times entry with direction "outbound" means the first flight and "return" means the last flight.
 - adults is at least 1. Children are aged 2 to 17; infants are under 2. "Family of four" with no ages means 2 adults and 2 children: guess ages 8 and 10 and record that in assumptions.
 - cabin is "any" unless the traveller names a class. Set mixed true only when they want a different class each way, and then fill cabinOut and cabinBack. Otherwise set cabinOut "business" and cabinBack "economy".
 - prefs.sort: "price" for cheap or budget, "comfort" for comfortable or luxury, "fastest" for quickest, "greenest" for low emissions, eco or sustainable, else "recommended". directOnly is true for nonstop or direct. refundable and changeable are true only when asked. maxPrice is a total budget for everyone if given, with its 3-letter currency.
@@ -154,7 +165,16 @@ function registerAi(app, { duffel, broadcast, route, fail }) {
       raw.origin = raw.origin || {};
       raw.destination = raw.destination || {};
       const questions = [...(raw.questions || [])];
-      const [from, to] = await Promise.all([resolvePlace(raw.origin), resolvePlace(raw.destination)]);
+      // Look each place up once, even when several flights share it.
+      const cache = new Map();
+      const place = (p) => {
+        const key = `${(p && p.iata) || ''}|${(p && p.query) || ''}`.toUpperCase();
+        if (!cache.has(key)) cache.set(key, resolvePlace(p));
+        return cache.get(key);
+      };
+      const isMulti = raw.trip === 'multi' && Array.isArray(raw.flights) && raw.flights.length >= 2;
+      if (isMulti) return planMulti(raw, place, today);
+      const [from, to] = await Promise.all([place(raw.origin), place(raw.destination)]);
       if (!from && !questions.length && (raw.origin.query || raw.origin.iata)) questions.push(`Nomad could not find “${raw.origin.query || raw.origin.iata}”. Which city or airport do you mean?`);
       if (!from && !raw.origin.query && !raw.origin.iata && !questions.some((q) => /from/i.test(q))) questions.push('Where are you flying from?');
       if (!to && (raw.destination.query || raw.destination.iata)) questions.push(`Nomad could not find “${raw.destination.query || raw.destination.iata}”. Which city or airport do you mean?`);
@@ -167,41 +187,20 @@ function registerAi(app, { duffel, broadcast, route, fail }) {
       if (depart && ret && ret < depart) ret = null;
       if (trip === 'return' && depart && !ret) questions.push('When do you want to come back?');
 
-      const adults = clampInt(raw.adults, 1, 9);
-      const childAges = (raw.childAges || []).map((a) => clampInt(a, 2, 17));
-      const infants = Math.min(clampInt(raw.infants, 0, 9), adults);
-      if (adults + childAges.length + infants > 9) questions.push('Nomad can book up to 9 travellers at once. How many people are travelling?');
-
       const search = {
         trip,
         from,
         to,
         depart,
         ret: trip === 'return' ? ret : null,
-        adults,
-        childAges,
-        infants,
+        legs: null,
+        ...travellers(raw, questions),
         cabin: CABINS.includes(raw.cabin) ? raw.cabin : 'any',
         mixed: trip === 'return' && Boolean(raw.mixed),
         cabinOut: raw.cabinOut || 'business',
         cabinBack: raw.cabinBack || 'economy',
         loyalty: [],
-        prefs: {
-          sort: SORTS.includes(raw.prefs && raw.prefs.sort) ? raw.prefs.sort : 'recommended',
-          directOnly: Boolean(raw.prefs && raw.prefs.directOnly),
-          refundable: Boolean(raw.prefs && raw.prefs.refundable),
-          maxPrice: raw.prefs && raw.prefs.maxPrice > 0 ? raw.prefs.maxPrice : null,
-          currency: (raw.prefs && raw.prefs.currency) || null,
-          changeable: Boolean(raw.prefs && raw.prefs.changeable),
-          times: ((raw.prefs && raw.prefs.times) || [])
-            .filter((t) => t && (t.after != null || t.before != null) && (trip === 'return' || t.direction !== 'return'))
-            .map((t) => ({ direction: t.direction === 'return' ? 'return' : 'outbound', which: t.which === 'arrive' ? 'arrive' : 'depart', after: clampInt(t.after ?? 0, 0, 24), before: clampInt(t.before ?? 24, 0, 24) }))
-            .filter((t) => t.after < t.before),
-          maxHours: raw.prefs && raw.prefs.maxHours > 0 ? raw.prefs.maxHours : null,
-          checkedBags: raw.prefs && raw.prefs.checkedBags > 0 ? clampInt(raw.prefs.checkedBags, 1, 2) : null,
-          features: ((raw.prefs && raw.prefs.features) || []).filter((k) => FEATURES.includes(k)),
-          loyalty: ((raw.prefs && raw.prefs.loyalty) || []).map((c) => String(c).toUpperCase()).filter((c) => /^[A-Z0-9]{2}$/.test(c)),
-        },
+        prefs: prefsOf(raw, trip),
       };
       if (from && to && from.code === to.code) questions.push('From and To are the same place. Where are you flying from?');
 
@@ -216,6 +215,82 @@ function registerAi(app, { duffel, broadcast, route, fail }) {
       };
     })
   );
+
+  // Multi-city: every flight needs a place it can find, a date after today, and dates in order.
+  async function planMulti(raw, place, today) {
+    const questions = [...(raw.questions || [])];
+    const wanted = raw.flights.slice(0, MAX_LEGS);
+    if (raw.flights.length > MAX_LEGS) questions.push(`Nomad can book up to ${MAX_LEGS} flights in one trip. Which ones matter most?`);
+    const ends = await Promise.all(wanted.map((f) => Promise.all([place(f.origin), place(f.destination)])));
+    const legs = wanted.map((f, i) => {
+      const [from, to] = ends[i];
+      const n = i + 1;
+      for (const [p, found] of [[f.origin, from], [f.destination, to]]) {
+        if (!found && p && (p.query || p.iata)) questions.push(`Nomad could not find “${p.query || p.iata}” (flight ${n}). Which city or airport do you mean?`);
+      }
+      if (!from && !(f.origin && (f.origin.query || f.origin.iata))) questions.push(n === 1 ? 'Where are you flying from?' : `Where does flight ${n} leave from?`);
+      if (!to && !(f.destination && (f.destination.query || f.destination.iata))) questions.push(`Where does flight ${n} go?`);
+      if (from && to && from.code === to.code) questions.push(`Flight ${n} starts and ends in ${from.name}. Where should it go?`);
+      const date = isDate(f.date) && f.date > today ? f.date : null;
+      if (!date) questions.push(`When is flight ${n}?`);
+      return { from, to, date };
+    });
+    legs.forEach((l, i) => {
+      if (i && l.date && legs[i - 1].date && l.date < legs[i - 1].date) questions.push(`Flight ${i + 1} is dated before flight ${i}. Which date is right?`);
+    });
+    const search = {
+      trip: 'multi',
+      legs,
+      from: legs[0].from,
+      to: legs[legs.length - 1].to,
+      depart: legs[0].date,
+      ret: null,
+      ...travellers(raw, questions),
+      cabin: CABINS.includes(raw.cabin) ? raw.cabin : 'any',
+      mixed: false,
+      cabinOut: 'business',
+      cabinBack: 'economy',
+      loyalty: [],
+      prefs: prefsOf(raw, 'multi'),
+    };
+    const ok = legs.every((l, i) => l.from && l.to && l.date && l.from.code !== l.to.code && (!i || l.date >= legs[i - 1].date));
+    return {
+      summary: raw.summary,
+      search,
+      assumptions: raw.assumptions || [],
+      questions: [...new Set(questions)],
+      alternatives: (raw.alternatives || []).slice(0, 5),
+      ready: ok && search.adults + search.childAges.length + search.infants <= 9,
+      raw,
+    };
+  }
+}
+
+function travellers(raw, questions) {
+  const adults = clampInt(raw.adults, 1, 9);
+  const childAges = (raw.childAges || []).map((a) => clampInt(a, 2, 17));
+  const infants = Math.min(clampInt(raw.infants, 0, 9), adults);
+  if (adults + childAges.length + infants > 9) questions.push('Nomad can book up to 9 travellers at once. How many people are travelling?');
+  return { adults, childAges, infants };
+}
+
+function prefsOf(raw, trip) {
+  return {
+    sort: SORTS.includes(raw.prefs && raw.prefs.sort) ? raw.prefs.sort : 'recommended',
+    directOnly: Boolean(raw.prefs && raw.prefs.directOnly),
+    refundable: Boolean(raw.prefs && raw.prefs.refundable),
+    maxPrice: raw.prefs && raw.prefs.maxPrice > 0 ? raw.prefs.maxPrice : null,
+    currency: (raw.prefs && raw.prefs.currency) || null,
+    changeable: Boolean(raw.prefs && raw.prefs.changeable),
+    times: ((raw.prefs && raw.prefs.times) || [])
+      .filter((t) => t && (t.after != null || t.before != null) && (trip !== 'oneway' || t.direction !== 'return'))
+      .map((t) => ({ direction: t.direction === 'return' ? 'return' : 'outbound', which: t.which === 'arrive' ? 'arrive' : 'depart', after: clampInt(t.after ?? 0, 0, 24), before: clampInt(t.before ?? 24, 0, 24) }))
+      .filter((t) => t.after < t.before),
+    maxHours: raw.prefs && raw.prefs.maxHours > 0 ? raw.prefs.maxHours : null,
+    checkedBags: raw.prefs && raw.prefs.checkedBags > 0 ? clampInt(raw.prefs.checkedBags, 1, 2) : null,
+    features: ((raw.prefs && raw.prefs.features) || []).filter((k) => FEATURES.includes(k)),
+    loyalty: ((raw.prefs && raw.prefs.loyalty) || []).map((c) => String(c).toUpperCase()).filter((c) => /^[A-Z0-9]{2}$/.test(c)),
+  };
 }
 
 module.exports = { registerAi };

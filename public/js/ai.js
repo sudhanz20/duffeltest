@@ -8,6 +8,7 @@ const EXAMPLES = [
   'Somewhere warm in Europe for a week in April, from Manchester, cheapest',
   'Family of four from Paris to Tokyo over Easter, nonstop if possible',
   'One way Heathrow to Dubai next Friday, first class',
+  'London to Paris on 2 May, 3 nights, then Rome for 4 nights, then home',
   'London to New York in business, morning flight out, flat bed, free Wi‑Fi, 2 bags, earning Avios, lowest CO₂',
 ];
 
@@ -49,13 +50,22 @@ function prefsText(p, s) {
   if (p.directOnly) out.push('Direct only');
   if (p.refundable) out.push('Refundable only');
   if (p.changeable) out.push('Changeable only');
-  for (const t of p.times || []) out.push(`${t.direction === 'return' ? 'Return' : 'Outbound'} ${t.which === 'arrive' ? 'lands' : 'leaves'} ${pad(t.after)}–${pad(t.before)}`);
+  for (const t of p.times || []) out.push(`${s.trip === 'multi' ? (t.direction === 'return' ? 'Last flight' : 'First flight') : t.direction === 'return' ? 'Return' : 'Outbound'} ${t.which === 'arrive' ? 'lands' : 'leaves'} ${pad(t.after)}–${pad(t.before)}`);
   if (p.maxHours) out.push(`Under ${p.maxHours} h each way`);
   if (p.checkedBags) out.push(`${p.checkedBags}+ checked bag${p.checkedBags > 1 ? 's' : ''}`);
   if ((p.features || []).length) out.push(p.features.map((k) => FEATURE_TEXT[k] || k).join(', '));
   if ((p.loyalty || []).length) out.push(`Earns with ${p.loyalty.join(', ')}`);
   if (p.maxPrice) out.push(`Under ${p.currency ? money(p.maxPrice, p.currency) : p.maxPrice} total`);
   return out.join(' · ');
+}
+
+// Multi-city: one line per flight, spanning the grid. A missing part reads "Needed".
+function flightsCell(legs, flag) {
+  const part = (p) => (p ? `${esc(p.name)} <span class="muted">${esc(p.code)}</span>` : '<b class="need">Needed</b>');
+  const ok = legs.every((l) => l.from && l.to && l.date);
+  return `<div class="ai-cell ai-flights ${flag ? 'guess' : ''} ${ok ? '' : 'missing'}">
+    <span class="label">Flights · multi-city${flag ? ' <em>guessed</em>' : ''}</span>
+    <ol>${legs.map((l) => `<li>${part(l.from)} → ${part(l.to)} <span class="when">${l.date ? esc(fmtDay(l.date, { weekday: 'short', day: 'numeric', month: 'short' })) : '<b class="need">Date needed</b>'}</span></li>`).join('')}</ol></div>`;
 }
 
 function cell(label, value, flag) {
@@ -106,9 +116,10 @@ export function mountAi(box, { onUseForm, onSearch }) {
       <div class="ai-plan">
         <p class="ai-summary serif">${esc(plan.summary || 'Here is what Nomad understood.')}</p>
         <div class="ai-grid">
+          ${s.trip === 'multi' ? flightsCell(s.legs, guessed(plan, 'flight', 'origin', 'destination', 'date', 'leg')) : `
           ${cell('From', s.from && `${s.from.name} (${s.from.code})`, guessed(plan, 'origin', 'from'))}
           ${cell('To', s.to && `${s.to.name} (${s.to.code})`, guessed(plan, 'destination', 'to'))}
-          ${cell('Dates', dates, guessed(plan, 'date', 'depart', 'ret'))}
+          ${cell('Dates', dates, guessed(plan, 'date', 'depart', 'ret'))}`}
           ${cell('Travellers', travellersText(s), guessed(plan, 'adult', 'child', 'infant', 'traveller', 'passenger'))}
           ${cell('Cabin', cabin, guessed(plan, 'cabin', 'class'))}
           ${cell('Preferences', prefsText(s.prefs, s), guessed(plan, 'sort', 'pref', 'price', 'budget', 'direct', 'time', 'bag', 'wifi', 'loyalty', 'meal', 'starlink'))}
