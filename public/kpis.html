@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nomad · Duffel supplier KPIs</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/nomad.css" />
+  <style>
+    .k-wrap { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; display: grid; gap: 24px; }
+    .k-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; }
+    .k-head h1 { font-family: var(--serif); font-weight: 400; font-size: 34px; margin: 0; }
+    .k-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .k-controls label { display: inline; margin: 0; }
+    .k-controls select { padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); }
+    .k-note { background: var(--brass-soft); border: 1px solid var(--brass-2); border-radius: var(--radius-sm); padding: 12px 16px; }
+    .k-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+    .k-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 6px; min-width: 0; }
+    .k-label { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    .k-value { font-family: var(--serif); font-size: 28px; font-variant-numeric: tabular-nums; }
+    .k-card svg { width: 100%; height: 44px; display: block; }
+    .k-card .k-hint { font-size: 12px; color: var(--muted); }
+    .k-bad { color: var(--rose); }
+    .k-ok { color: var(--sage); }
+    .k-section h2 { font-family: var(--serif); font-weight: 400; font-size: 22px; margin: 0 0 12px; }
+    .k-table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
+    table.k-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .k-table th, .k-table td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line-2); }
+    .k-table td.n, .k-table th.n { text-align: right; font-variant-numeric: tabular-nums; }
+    .k-table th { font-size: 12px; color: var(--muted); font-weight: 500; }
+  </style>
+</head>
+<body>
+  <main class="k-wrap">
+    <div class="k-head">
+      <div>
+        <a href="/" class="small muted">← Back to Nomad</a>
+        <h1>Duffel supplier KPIs</h1>
+        <div class="small muted" id="k-sub">Daily totals Nomad records about its Duffel traffic.</div>
+      </div>
+      <div class="k-controls">
+        <label class="small muted" for="k-mode">Data</label>
+        <select id="k-mode"><option value="test">Test key</option><option value="live">Live key</option></select>
+        <label class="small muted" for="k-days">Period</label>
+        <select id="k-days"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option></select>
+      </div>
+    </div>
+
+    <div class="k-note" id="k-setup" hidden>
+      <strong>Recording is off.</strong> Add a free Upstash Redis store in Vercel (Storage, then Upstash for Redis) and connect it to this project.
+      It sets <code>KV_REST_API_URL</code> and <code>KV_REST_API_TOKEN</code>. Then redeploy. Locally, put <code>UPSTASH_REDIS_REST_URL</code> and <code>UPSTASH_REDIS_REST_TOKEN</code> in <code>.env</code>.
+    </div>
+    <div class="k-note" id="k-test" hidden>
+      These numbers come from your Duffel <strong>test</strong> key. Test data is synthetic, so use it to check the recording works, not to judge Duffel.
+    </div>
+    <div class="k-note k-bad" id="k-error" hidden></div>
+
+    <section class="k-section">
+      <h2>Reliability</h2>
+      <div class="k-grid" id="g-reliability"></div>
+    </section>
+    <section class="k-section">
+      <h2>Conversion and cost</h2>
+      <div class="k-grid" id="g-conversion"></div>
+    </section>
+    <section class="k-section">
+      <h2>After the sale</h2>
+      <div class="k-grid" id="g-after"></div>
+    </section>
+    <section class="k-section">
+      <h2>Coverage on your top routes</h2>
+      <div class="k-table-wrap">
+        <table class="k-table">
+          <thead><tr><th>Route</th><th class="n">Searches</th><th class="n">Offers per search</th><th class="n">Airlines per search</th></tr></thead>
+          <tbody id="k-routes"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/js/kpis.js"></script>
+</body>
+</html>

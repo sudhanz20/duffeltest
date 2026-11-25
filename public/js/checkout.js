@@ -306,7 +306,7 @@ export function renderPayment(view) {
     try {
       await wait(900);
       p.set(steps[1]);
-      const r = await api('POST', '/api/orders', { offerId: o.id, travellers: t, payLater: method === 'later' });
+      const r = await api('POST', '/api/orders', { offerId: o.id, travellers: t, payLater: method === 'later', shownTotal: o.total });
       state.confirmation = { orders: r.orders, held: r.held, method, offer: o };
       persist('confirmation');
       state.offer = null;
