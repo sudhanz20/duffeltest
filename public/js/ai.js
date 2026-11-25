@@ -8,6 +8,7 @@ const EXAMPLES = [
   'Somewhere warm in Europe for a week in April, from Manchester, cheapest',
   'Family of four from Paris to Tokyo over Easter, nonstop if possible',
   'One way Heathrow to Dubai next Friday, first class',
+  'London to New York in business, morning flight out, flat bed, free Wi‑Fi, 2 bags, earning Avios, lowest CO₂',
 ];
 
 function load() {
@@ -37,10 +38,22 @@ function travellersText(s) {
   return parts.join(', ');
 }
 
+const FEATURE_TEXT = {
+  cabinBag: 'cabin bag included', wifi: 'Wi‑Fi', wifiFree: 'free Wi‑Fi', power: 'power sockets', flatBed: 'flat bed', suite: 'private suite',
+  legroom: 'extra legroom', priorityBoarding: 'priority boarding', priorityCheckIn: 'priority check-in', seatSelection: 'seat selection included',
+};
+const pad = (h) => `${String(h).padStart(2, '0')}:00`;
+
 function prefsText(p, s) {
-  const out = [{ recommended: 'Recommended first', comfort: 'Most comfortable first', price: 'Cheapest first', fastest: 'Fastest first' }[p.sort]];
+  const out = [{ recommended: 'Recommended first', comfort: 'Most comfortable first', price: 'Cheapest first', fastest: 'Fastest first', greenest: 'Lowest CO₂ first' }[p.sort]];
   if (p.directOnly) out.push('Direct only');
   if (p.refundable) out.push('Refundable only');
+  if (p.changeable) out.push('Changeable only');
+  for (const t of p.times || []) out.push(`${t.direction === 'return' ? 'Return' : 'Outbound'} ${t.which === 'arrive' ? 'lands' : 'leaves'} ${pad(t.after)}–${pad(t.before)}`);
+  if (p.maxHours) out.push(`Under ${p.maxHours} h each way`);
+  if (p.checkedBags) out.push(`${p.checkedBags}+ checked bag${p.checkedBags > 1 ? 's' : ''}`);
+  if ((p.features || []).length) out.push(p.features.map((k) => FEATURE_TEXT[k] || k).join(', '));
+  if ((p.loyalty || []).length) out.push(`Earns with ${p.loyalty.join(', ')}`);
   if (p.maxPrice) out.push(`Under ${p.currency ? money(p.maxPrice, p.currency) : p.maxPrice} total`);
   return out.join(' · ');
 }
@@ -98,7 +111,7 @@ export function mountAi(box, { onUseForm, onSearch }) {
           ${cell('Dates', dates, guessed(plan, 'date', 'depart', 'ret'))}
           ${cell('Travellers', travellersText(s), guessed(plan, 'adult', 'child', 'infant', 'traveller', 'passenger'))}
           ${cell('Cabin', cabin, guessed(plan, 'cabin', 'class'))}
-          ${cell('Shown first', prefsText(s.prefs, s), guessed(plan, 'sort', 'pref', 'price', 'budget', 'direct'))}
+          ${cell('Preferences', prefsText(s.prefs, s), guessed(plan, 'sort', 'pref', 'price', 'budget', 'direct', 'time', 'bag', 'wifi', 'loyalty', 'meal', 'starlink'))}
         </div>
         ${plan.questions.length ? `<div class="ai-q"><b>Nomad needs to know</b><ul>${plan.questions.map((q) => `<li>${esc(q)}</li>`).join('')}</ul></div>` : ''}
         ${plan.assumptions.length ? `<div class="ai-a"><b>Nomad guessed</b><ul>${plan.assumptions.map((a) => `<li>${esc(a.text)}</li>`).join('')}</ul><div class="tiny muted">Correct anything below, or search if it looks right.</div></div>` : ''}
