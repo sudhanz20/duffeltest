@@ -61,8 +61,45 @@ export function renderTrips(view) {
       }
       const dep = (o) => (o.slices[0] && o.slices[0].departingAt) || '';
       const upcoming = r.orders.filter((o) => !o.cancelledAt && status(o)[0] !== 'past').sort((x, y) => dep(x).localeCompare(dep(y)));
-      const cancelled = r.orders.filter((o) => o.cancelledAt).sort((x, y) => String(y.cancelledAt).localeCompare(String(x.cancelledAt)));
+      // Cancelled: the earliest flight date first.
+      const cancelled = r.orders.filter((o) => o.cancelledAt).sort((x, y) => dep(x).localeCompare(dep(y)));
       const completed = r.orders.filter((o) => !o.cancelledAt && status(o)[0] === 'past').sort((x, y) => dep(y).localeCompare(dep(x)));
+      const tabs = [
+        ['upcoming', 'Upcoming', upcoming],
+        ['cancelled', 'Cancelled', cancelled],
+        ...(completed.length ? [['past', 'Past', completed]] : []),
+      ];
+      let tab = store.get('nomad.tripsTab', 'upcoming');
+      if (!tabs.some((t) => t[0] === tab)) tab = 'upcoming';
+      let expanded = false;
+      const FIRST = 2;
+
+      const when = (o) => {
+        const a = o.slices[0];
+        if (!a) return '';
+        const out = fmtDay(a.departingAt, { day: 'numeric', month: 'short', year: 'numeric' });
+        return o.slices.length > 1 ? `${out} – ${fmtDay(o.slices[o.slices.length - 1].departingAt, { day: 'numeric', month: 'short' })}` : out;
+      };
+      const travellers = (o) => `${o.passengers.length} traveller${o.passengers.length > 1 ? 's' : ''}`;
+
+      // The next flight: a wide card with the departure time and a countdown.
+      const nextCard = (o) => {
+        const a = o.slices[0];
+        const seg = a && a.segments && a.segments[0];
+        const days = a ? Math.round((new Date(a.departingAt.slice(0, 10)) - new Date(ymd(today()))) / 864e5) : null;
+        const inText = days == null ? '' : days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`;
+        const [cls, label] = status(o);
+        return `<a class="trip-next" href="#/trip/${esc(o.id)}">
+          <div class="img"><img src="${cityImg(a ? a.destinationCityCode || a.destination : '', 1000)}" alt="" /><span class="next-flag">${ICON.plane} Next flight · ${esc(inText)}</span></div>
+          <div class="body">
+            <div class="row-between"><span class="status ${cls}">${label}</span>${logoHtml(o.owner, 28)}</div>
+            <h3>${esc(title(o))}</h3>
+            ${a ? `<div class="next-times"><div><b>${hhmm(a.departingAt)}</b><span>${esc(a.origin)}</span></div><div class="line"></div><div><b>${hhmm(a.arrivingAt)}</b><span>${esc(a.destination)}</span></div></div>` : ''}
+            <div class="small muted">${esc(fmtDay(a.departingAt, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}${seg ? ` · ${esc(seg.flight)}` : ''} · ${travellers(o)}</div>
+            <div class="row-between" style="margin-top:14px"><span class="small"><span class="muted">Ref</span> <b class="ref-code">${esc(o.reference)}</b></span><span class="btn btn-primary btn-sm">Manage booking</span></div>
+          </div></a>`;
+      };
+
       const card = (o) => {
         const [cls, label] = status(o);
         const a = o.slices[0];
@@ -73,15 +110,77 @@ export function renderTrips(view) {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px"><span class="small"><span class="muted">Ref</span> <b style="letter-spacing:.08em">${esc(o.reference)}</b></span>${logoHtml(o.owner, 24)}</div>
           </div></a>`;
       };
-      const section = (name, list, empty, first) =>
-        `<section class="trip-group" data-group="${name.toLowerCase()}">
-          <h2 class="serif" style="font-weight:400;font-size:24px;margin:${first ? 0 : 34}px 0 12px">${name} <span class="muted small" style="font-family:Inter,sans-serif">${list.length}</span></h2>
-          ${list.length ? `<div class="trips">${list.map(card).join('')}</div>` : `<p class="small muted" style="margin:0">${empty}</p>`}
-        </section>`;
-      box.innerHTML =
-        section('Upcoming', upcoming, 'No upcoming trips. <a href="#/">Find a flight</a>.', true) +
-        section('Cancelled', cancelled, 'No cancelled bookings.') +
-        (completed.length ? section('Completed', completed, '') : '');
+      // Cancelled: what was paid, the penalty, and where the refund went.
+      const REFUND_TO = {
+        balance: ['ok', 'Refunded to your Duffel balance'],
+        original_form_of_payment: ['wait', 'Refund on its way to your card'],
+        airline_credits: ['ok', 'Airline credit issued'],
+        voucher: ['ok', 'Voucher issued'],
+        arc_bsp_cash: ['wait', 'Refund on its way'],
+      };
+      const cancelRow = (o) => {
+        const c = o.cancellation || {};
+        const cur = c.refundCurrency || o.currency;
+        const credits = (c.airlineCredits || []).reduce((t, x) => t + (x.currency === cur ? x.amount : 0), 0);
+        const refunded = (c.refundAmount || 0) + credits;
+        let money1 = '';
+        let state;
+        if (!o.paidAt) {
+          state = ['none', 'Nothing was charged'];
+          money1 = `<div><span>Paid</span><b>${money(0, o.currency)}</b></div><div><span>Penalty</span><b>None</b></div><div><span>Refund</span><b>Not needed</b></div>`;
+        } else {
+          const penalty = cur === o.currency ? Math.max(0, o.total - refunded) : null;
+          state = !c.confirmedAt ? ['wait', 'Refund pending'] : refunded <= 0 ? ['bad', 'No refund due'] : REFUND_TO[c.refundTo] || ['ok', 'Refunded'];
+          money1 = `<div><span>Paid</span><b>${money(o.total, o.currency, 2)}</b></div>
+            <div><span>Penalty</span><b class="${penalty ? 'pen' : ''}">${penalty == null ? '—' : penalty > 0.004 ? money(penalty, o.currency, 2) : 'No penalty'}</b></div>
+            <div><span>Refund</span><b class="ref-amt">${money(refunded, cur, 2)}</b></div>`;
+        }
+        const a = o.slices[0];
+        return `<a class="cancel-row" href="#/trip/${esc(o.id)}">
+          <img loading="lazy" src="${cityImg(a ? a.destinationCityCode || a.destination : '', 300)}" alt="" />
+          <div class="cr-main">
+            <div class="row-between"><h3>${esc(title(o))}</h3>${logoHtml(o.owner, 22)}</div>
+            <div class="small muted">Flight was ${esc(when(o))} · ${travellers(o)} · Ref <b class="ref-code">${esc(o.reference)}</b></div>
+            <div class="small muted">Cancelled ${esc(fmtDay(o.cancelledAt, { day: 'numeric', month: 'short', year: 'numeric' }))}</div>
+          </div>
+          <div class="cr-money">${money1}</div>
+          <div class="cr-state"><span class="refund-pill ${state[0]}">${esc(state[1])}</span></div>
+        </a>`;
+      };
+
+      function paint() {
+        const list = tabs.find((t) => t[0] === tab)[2];
+        let body;
+        if (tab === 'upcoming') {
+          if (!list.length) body = `<div class="empty"><h3>No upcoming trips</h3><p>Your next booking will appear here.</p><a class="btn btn-primary" href="#/">Find a flight</a></div>`;
+          else {
+            const rest = list.slice(1);
+            const shown = expanded ? rest : rest.slice(0, FIRST - 1);
+            const hidden = rest.length - shown.length;
+            body = nextCard(list[0]) + (shown.length ? `<h2 class="list-head">Later trips</h2><div class="trips">${shown.map(card).join('')}</div>` : '') +
+              (rest.length > FIRST - 1 ? `<button type="button" class="btn btn-ghost more-btn" id="more-trips">${expanded ? 'Show fewer' : `Show ${hidden} more booking${hidden > 1 ? 's' : ''}`}</button>` : '');
+          }
+        } else if (tab === 'cancelled') {
+          body = list.length
+            ? `<p class="small muted" style="margin:0 0 12px">Earliest flight first. Amounts are for the whole booking.</p><div class="cancel-list">${list.map(cancelRow).join('')}</div>`
+            : `<div class="empty"><h3>No cancelled bookings</h3></div>`;
+        } else body = `<div class="trips">${list.map(card).join('')}</div>`;
+        box.innerHTML = `<div class="tabs" role="tablist">${tabs.map(([k, label, l]) => `<button type="button" role="tab" aria-selected="${k === tab}" class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${label} <span>${l.length}</span></button>`).join('')}</div><div class="tab-body">${body}</div>`;
+      }
+      box.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-tab]');
+        if (t) {
+          tab = t.dataset.tab;
+          store.set('nomad.tripsTab', tab);
+          expanded = false;
+          return paint();
+        }
+        if (e.target.id === 'more-trips') {
+          expanded = !expanded;
+          paint();
+        }
+      });
+      paint();
     })
     .catch((e) => {
       if (alive) $('#trips', view).innerHTML = `<div class="notice bad">${esc(e.message)}</div>`;

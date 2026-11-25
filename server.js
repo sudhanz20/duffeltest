@@ -464,6 +464,16 @@ function slimOrder(o) {
     reference: o.booking_reference,
     createdAt: o.created_at,
     cancelledAt: o.cancelled_at,
+    paidAt: (o.payment_status || {}).paid_at || null,
+    cancellation: o.cancellation
+      ? {
+          refundAmount: o.cancellation.refund_amount == null ? null : Number(o.cancellation.refund_amount),
+          refundCurrency: o.cancellation.refund_currency,
+          refundTo: o.cancellation.refund_to,
+          confirmedAt: o.cancellation.confirmed_at,
+          airlineCredits: (o.cancellation.airline_credits || []).map((c) => ({ amount: Number(c.credit_amount), currency: c.credit_currency, code: c.credit_code })),
+        }
+      : null,
     total: Number(o.total_amount),
     currency: o.total_currency,
     type: o.type,
