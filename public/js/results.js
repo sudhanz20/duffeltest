@@ -8,7 +8,28 @@ const SORTS = {
   comfort: { label: 'Comfort', hint: 'Best cabin, then price', fn: (a, b) => b.comfort - a.comfort || a.total - b.total },
   price: { label: 'Cheapest', hint: 'Lowest price', fn: (a, b) => a.total - b.total },
   fastest: { label: 'Fastest', hint: 'Shortest time', fn: (a, b) => a.minutes - b.minutes || a.total - b.total },
+  greenest: { label: 'Greenest', hint: 'Lowest CO₂', fn: (a, b) => (a.emissionsKg ?? 1e9) - (b.emissionsKg ?? 1e9) || a.total - b.total },
 };
+
+// Filters backed by Duffel offer data. "Main flight" = the longest flight each way.
+export const FEATURES = {
+  cabinBag: 'Cabin bag included',
+  wifi: 'Wi‑Fi on main flights',
+  wifiFree: 'Free Wi‑Fi on main flights',
+  power: 'Power sockets',
+  flatBed: 'Flat bed',
+  suite: 'Private suite',
+  legroom: 'Extra legroom',
+  priorityBoarding: 'Priority boarding',
+  priorityCheckIn: 'Priority check-in',
+  seatSelection: 'Seat selection included',
+};
+const FEATURE_GROUPS = [
+  ['Bags and fare', ['cabinBag', 'seatSelection', 'priorityBoarding', 'priorityCheckIn']],
+  ['On board', ['wifi', 'wifiFree', 'power', 'legroom', 'flatBed', 'suite']],
+];
+const hourOf = (iso) => (iso ? Number(iso.slice(11, 13)) + Number(iso.slice(14, 16)) / 60 : 0);
+const hh = (h) => (h >= 24 ? '23:59' : `${String(Math.floor(h)).padStart(2, '0')}:00`);
 
 function legsFor(s) {
   const out = { origin: s.from.code, destination: s.to.code, date: s.depart, cabin: s.mixed && s.trip === 'return' ? s.cabinOut : s.cabin };
@@ -79,10 +100,17 @@ function detailsHtml(o) {
     .join('');
 }
 
-function offerCard(o, i, sortKey, n) {
+function co2Diff(kg, median) {
+  const pct = Math.round(((kg - median) / median) * 100);
+  return pct === 0 ? 'typical' : pct < 0 ? `${-pct}% less than typical` : `${pct}% more than typical`;
+}
+
+function offerCard(o, i, sortKey, n, eco) {
   const per = o.total / n;
   const badges = [];
-  if (i === 0) badges.push(`<span class="tag good">${sortKey === 'comfort' ? 'Most comfortable' : sortKey === 'price' ? 'Cheapest' : sortKey === 'fastest' ? 'Fastest' : 'Our pick'}</span>`);
+  const green = eco && o.emissionsKg != null && o.emissionsKg <= eco.min * 1.1;
+  if (i === 0) badges.push(`<span class="tag good">${sortKey === 'comfort' ? 'Most comfortable' : sortKey === 'price' ? 'Cheapest' : sortKey === 'fastest' ? 'Fastest' : sortKey === 'greenest' ? 'Greenest' : 'Our pick'}</span>`);
+  if (green) badges.push(`<span class="tag leaf">${ICON.leaf} Lowest CO₂</span>`);
   if (o.separateTickets) badges.push('<span class="tag">2 tickets</span>');
   return `<article class="offer" data-id="${esc(o.id)}">
     <div class="offer-main">
@@ -97,7 +125,10 @@ function offerCard(o, i, sortKey, n) {
       <span>${esc(o.owner.name)}</span>
       ${o.refundable ? '<span class="tag good">Refundable</span>' : '<span class="tag">Non-refundable</span>'}
       ${o.changeable ? '<span class="tag good">Changeable</span>' : ''}
-      ${o.emissionsKg ? `<span>${ICON.leaf} ${o.emissionsKg} kg CO₂</span>` : ''}
+      ${o.emissionsKg ? `<span class="co2 ${green ? 'green' : ''}">${ICON.leaf} ${o.emissionsKg.toLocaleString()} kg CO₂${eco && eco.median ? ` · ${co2Diff(o.emissionsKg, eco.median)}` : ''}</span>` : ''}
+      ${o.features && o.features.checkedBags ? `<span>${ICON.bag} ${o.features.checkedBags} checked bag${o.features.checkedBags > 1 ? 's' : ''}</span>` : ''}
+      ${o.features && o.features.wifi ? `<span>${ICON.wifi} ${o.features.wifiFree ? 'Free Wi‑Fi' : 'Wi‑Fi'}</span>` : ''}
+      ${o.features && o.features.flatBed ? `<span>${ICON.seat} Flat bed</span>` : ''}
       <button type="button" class="btn-link" data-details style="margin-left:auto">Flight details</button>
     </div>
     <div class="details hidden"></div>
@@ -137,7 +168,9 @@ export function renderResults(view) {
   let data = fresh ? state.results.data : null;
   let sortKey = 'recommended';
   let shown = 15;
-  const f = { stops: new Set(), airlines: new Set(), refundable: false, maxPrice: null };
+  const f = { stops: new Set(), airlines: new Set(), refundable: false, changeable: false, maxPrice: null, times: legs.map(() => ({ dep: [0, 24], arr: [0, 24] })), maxHours: null, checked: 0, feats: new Set(), loyalty: new Set() };
+  let eco = null;
+  const longest = (o) => Math.max(...o.slices.map((sl) => sl.minutes));
 
   function filtered() {
     return data.offers.filter((o) => {
@@ -148,7 +181,22 @@ export function renderResults(view) {
       }
       if (f.airlines.size && !f.airlines.has(o.owner.code)) return false;
       if (f.refundable && !o.refundable) return false;
+      if (f.changeable && !o.changeable) return false;
       if (f.maxPrice != null && o.total > f.maxPrice) return false;
+      for (let k = 0; k < f.times.length; k++) {
+        const sl = o.slices[k];
+        if (!sl) continue;
+        const [d0, d1] = f.times[k].dep;
+        const [a0, a1] = f.times[k].arr;
+        const dh = hourOf(sl.departingAt);
+        const ah = hourOf(sl.arrivingAt);
+        if (dh < d0 || dh > d1 || ah < a0 || ah > a1) return false;
+      }
+      if (f.maxHours != null && longest(o) > f.maxHours * 60) return false;
+      const ft = o.features || {};
+      if (f.checked && (ft.checkedBags || 0) < f.checked) return false;
+      for (const k of f.feats) if (!ft[k]) return false;
+      if (f.loyalty.size && !(ft.loyalty || []).some((c) => f.loyalty.has(c))) return false;
       return true;
     });
   }
@@ -170,6 +218,17 @@ export function renderResults(view) {
     const lo = Math.floor(Math.min(...prices));
     const hi = Math.ceil(Math.max(...prices));
     const cur = data.offers[0] ? data.offers[0].currency : 'GBP';
+    const count = (fn) => data.offers.filter(fn).length;
+    const hours = data.offers.map((o) => longest(o) / 60);
+    const hLo = Math.floor(Math.min(...hours));
+    const hHi = Math.ceil(Math.max(...hours));
+    const names = new Map(data.offers.map((o) => [o.owner.code, o.owner.name]));
+    const progCount = new Map();
+    for (const o of data.offers) for (const c of (o.features && o.features.loyalty) || []) progCount.set(c, (progCount.get(c) || 0) + 1);
+    const programmes = [...progCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+    const dual = (id, label, [lo2, hi2]) => `<div class="dual-wrap"><div class="dual-head"><span>${label}</span><span class="small muted" id="${id}-label">${hh(lo2)} – ${hh(hi2)}</span></div>
+      <div class="dual" data-dual="${id}"><div class="dual-fill" style="left:${(lo2 / 24) * 100}%;right:${100 - (hi2 / 24) * 100}%"></div>
+      <input type="range" min="0" max="24" step="1" value="${lo2}" data-end="0" aria-label="${label} after" /><input type="range" min="0" max="24" step="1" value="${hi2}" data-end="1" aria-label="${label} before" /></div></div>`;
     $('#filters', view).innerHTML = `
       <section><h4>Stops</h4>
         ${[['0', 'Direct'], ['1', '1 stop'], ['2', '2+ stops']].map(([k, label]) => {
@@ -181,9 +240,27 @@ export function renderResults(view) {
         <input type="range" class="range" id="maxp" min="${lo}" max="${hi}" step="1" value="${f.maxPrice ?? hi}" />
         <div class="small muted" id="maxp-label">Up to ${money(f.maxPrice ?? hi, cur)}</div>
       </section>
-      <section><h4>Fare</h4>
-        <label class="check"><input type="checkbox" id="refund" ${f.refundable ? 'checked' : ''} /><span class="grow">Refundable only</span></label>
+      ${legs.map((l, k) => `<section><h4>${legs.length > 1 ? (k ? 'Return times' : 'Outbound times') : 'Times'}</h4>
+        ${dual(`t${k}d`, 'Departs', f.times[k].dep)}${dual(`t${k}a`, 'Arrives', f.times[k].arr)}
+      </section>`).join('')}
+      <section><h4>Journey time</h4>
+        <input type="range" class="range" id="maxh" min="${hLo}" max="${hHi}" step="1" value="${f.maxHours ?? hHi}" />
+        <div class="small muted" id="maxh-label">Up to ${f.maxHours ?? hHi} hours each way</div>
       </section>
+      <section><h4>Checked bags</h4>
+        <div class="seg-btns">${[0, 1, 2].map((n) => `<button type="button" data-bags="${n}" class="${f.checked === n ? 'on' : ''}" ${n && !count((o) => (o.features?.checkedBags || 0) >= n) ? 'disabled' : ''}>${n ? `${n}+ included` : 'Any'}</button>`).join('')}</div>
+      </section>
+      <section><h4>Fare rules</h4>
+        <label class="check"><input type="checkbox" id="refund" ${f.refundable ? 'checked' : ''} ${count((o) => o.refundable) ? '' : 'disabled'} /><span class="grow">Refundable</span><span class="small muted">${count((o) => o.refundable)}</span></label>
+        <label class="check"><input type="checkbox" id="changeable" ${f.changeable ? 'checked' : ''} ${count((o) => o.changeable) ? '' : 'disabled'} /><span class="grow">Changeable</span><span class="small muted">${count((o) => o.changeable)}</span></label>
+      </section>
+      ${FEATURE_GROUPS.map(([title, keys]) => `<section><h4>${title}</h4>${keys.map((k) => {
+        const c = count((o) => o.features && o.features[k]);
+        return `<label class="check"><input type="checkbox" data-feat="${k}" ${f.feats.has(k) ? 'checked' : ''} ${c ? '' : 'disabled'} /><span class="grow">${FEATURES[k]}</span><span class="small muted">${c}</span></label>`;
+      }).join('')}</section>`).join('')}
+      ${programmes.length ? `<section><h4>Earn miles with</h4>${programmes.map(([code, c]) => `
+        <label class="check"><input type="checkbox" data-loy="${esc(code)}" ${f.loyalty.has(code) ? 'checked' : ''} /><span class="grow">${esc(names.get(code) || code)}</span><span class="small muted">${c}</span></label>`).join('')}
+        <div class="tiny muted">Flights where this airline's frequent flyer programme can be added.</div></section>` : ''}
       <section><h4>Airlines</h4>
         ${[...airlines.values()].sort((a, b) => a.min - b.min).slice(0, 20).map(({ owner, min }) => `
           <label class="check"><input type="checkbox" data-air="${esc(owner.code)}" ${f.airlines.has(owner.code) ? 'checked' : ''} />${logoHtml(owner, 20)}<span class="grow" title="${esc(owner.name)}">${esc(owner.name)}</span><span class="small muted">${money(min, cur)}</span></label>`).join('')}
@@ -202,8 +279,10 @@ export function renderResults(view) {
       .join('');
     $('#count', view).textContent = `${list.length} of ${data.offers.length} flights shown`;
     const rows = sorted[sortKey];
+    const em = data.offers.map((o) => o.emissionsKg).filter((x) => x != null).sort((a, b) => a - b);
+    eco = em.length ? { min: em[0], median: em[Math.floor(em.length / 2)] } : null;
     $('#list', view).innerHTML = rows.length
-      ? rows.slice(0, shown).map((o, i) => offerCard(o, i, sortKey, n)).join('') +
+      ? rows.slice(0, shown).map((o, i) => offerCard(o, i, sortKey, n, eco)).join('') +
         (rows.length > shown ? `<div class="more"><button type="button" class="btn btn-ghost" id="more">Show ${Math.min(15, rows.length - shown)} more</button></div>` : '')
       : `<div class="empty"><h3>No flights match these filters</h3><p>Try removing a filter.</p></div>`;
   }
@@ -227,23 +306,37 @@ export function renderResults(view) {
     const p = s.prefs;
     if (prefsDone || !p) return;
     prefsDone = true;
-    const skipped = [];
     if (SORTS[p.sort]) sortKey = p.sort;
-    if (p.directOnly) {
-      if (data.offers.some((o) => o.slices.every((sl) => sl.stops === 0))) f.stops.add('0');
-      else skipped.push('no direct flights were found');
+    // Apply each preference in turn. Skip any that would leave no flights, and say so.
+    const skipped = [];
+    const step = (label, apply, undo) => {
+      apply();
+      if (!filtered().length) {
+        undo();
+        skipped.push(label);
+      }
+    };
+    const cur = data.offers[0].currency;
+    if (p.directOnly) step('direct only', () => f.stops.add('0'), () => f.stops.delete('0'));
+    for (const t of p.times || []) {
+      const k = t.direction === 'return' ? 1 : 0;
+      const key = t.which === 'arrive' ? 'arr' : 'dep';
+      if (!f.times[k]) continue;
+      const prev = f.times[k][key];
+      step(`${k ? 'return' : 'outbound'} ${key === 'dep' ? 'leaving' : 'landing'} ${hh(t.after)}–${hh(t.before)}`, () => (f.times[k][key] = [t.after, t.before]), () => (f.times[k][key] = prev));
     }
-    if (p.refundable) {
-      if (data.offers.some((o) => o.refundable)) f.refundable = true;
-      else skipped.push('no refundable fares were found');
-    }
+    if (p.checkedBags) step(`${p.checkedBags}+ checked bags`, () => (f.checked = Math.min(2, p.checkedBags)), () => (f.checked = 0));
+    const loy = (p.loyalty || []).map((c) => c.toUpperCase());
+    if (loy.length) step(`earning with ${loy.join(', ')}`, () => loy.forEach((c) => f.loyalty.add(c)), () => f.loyalty.clear());
+    for (const k of p.features || []) if (FEATURES[k]) step(FEATURES[k].toLowerCase(), () => f.feats.add(k), () => f.feats.delete(k));
+    if (p.refundable) step('refundable', () => (f.refundable = true), () => (f.refundable = false));
+    if (p.changeable) step('changeable', () => (f.changeable = true), () => (f.changeable = false));
+    if (p.maxHours) step(`under ${p.maxHours} hours`, () => (f.maxHours = Math.ceil(p.maxHours)), () => (f.maxHours = null));
     if (p.maxPrice) {
-      const cur = data.offers[0].currency;
-      if (p.currency && p.currency.toUpperCase() !== cur) skipped.push(`your budget is in ${p.currency.toUpperCase()} but prices are in ${cur}`);
-      else if (data.offers.some((o) => o.total <= p.maxPrice)) f.maxPrice = Math.ceil(p.maxPrice);
-      else skipped.push(`nothing costs under ${money(p.maxPrice, cur)}`);
+      if (p.currency && p.currency.toUpperCase() !== cur) skipped.push(`a budget in ${p.currency.toUpperCase()} (prices are in ${cur})`);
+      else step(`under ${money(p.maxPrice, cur)}`, () => (f.maxPrice = Math.ceil(p.maxPrice)), () => (f.maxPrice = null));
     }
-    if (skipped.length) $('#note', view).insertAdjacentHTML('beforeend', `<div class="notice">Ask Nomad filters were relaxed because ${esc(skipped.join(', and '))}.</div>`);
+    if (skipped.length) $('#note', view).insertAdjacentHTML('beforeend', `<div class="notice">No flight matched everything you asked Nomad for, so these were left off: ${esc(skipped.join(', '))}. You can turn them on in the filters.</div>`);
   }
 
   // ---------- Events ----------
@@ -252,11 +345,33 @@ export function renderResults(view) {
     if (t.dataset.stop) t.checked ? f.stops.add(t.dataset.stop) : f.stops.delete(t.dataset.stop);
     else if (t.dataset.air) t.checked ? f.airlines.add(t.dataset.air) : f.airlines.delete(t.dataset.air);
     else if (t.id === 'refund') f.refundable = t.checked;
+    else if (t.id === 'changeable') f.changeable = t.checked;
+    else if (t.dataset.feat) t.checked ? f.feats.add(t.dataset.feat) : f.feats.delete(t.dataset.feat);
+    else if (t.dataset.loy) t.checked ? f.loyalty.add(t.dataset.loy) : f.loyalty.delete(t.dataset.loy);
     else return;
     shown = 15;
     paintList();
   });
   view.addEventListener('input', (e) => {
+    const dualBox = e.target.closest('[data-dual]');
+    if (dualBox) {
+      const id = dualBox.dataset.dual;
+      const [a, b] = $$('input', dualBox).map((x) => Number(x.value));
+      if (a > b) e.target.value = e.target.dataset.end === '0' ? b : a; // handles cannot cross
+      const lo2 = Math.min(a, b);
+      const hi2 = Math.max(a, b);
+      f.times[Number(id[1])][id[2] === 'd' ? 'dep' : 'arr'] = [lo2, hi2];
+      $('.dual-fill', dualBox).style.cssText = `left:${(lo2 / 24) * 100}%;right:${100 - (hi2 / 24) * 100}%`;
+      $(`#${id}-label`, view).textContent = `${hh(lo2)} – ${hh(hi2)}`;
+      shown = 15;
+      return paintList();
+    }
+    if (e.target.id === 'maxh') {
+      f.maxHours = Number(e.target.value);
+      $('#maxh-label', view).textContent = `Up to ${f.maxHours} hours each way`;
+      shown = 15;
+      return paintList();
+    }
     if (e.target.id !== 'maxp') return;
     f.maxPrice = Number(e.target.value);
     const cur = data.offers[0].currency;
@@ -265,6 +380,13 @@ export function renderResults(view) {
     paintList();
   });
   view.addEventListener('click', (e) => {
+    const bags = e.target.closest('[data-bags]');
+    if (bags) {
+      f.checked = Number(bags.dataset.bags);
+      $$('[data-bags]', view).forEach((b) => b.classList.toggle('on', b === bags));
+      shown = 15;
+      return paintList();
+    }
     const so = e.target.closest('[data-sort]');
     if (so) {
       sortKey = so.dataset.sort;

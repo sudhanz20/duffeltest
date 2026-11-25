@@ -8,7 +8,9 @@ A flight search and booking app built on the Duffel API. It runs in Duffel test 
 - **Travellers.** Adults, children with their ages, and infants on a lap. Up to 9 people.
 - **Frequent flyer.** Add loyalty numbers per adult. Airlines may return member fares.
 - **Cabins.** Economy, Premium, Business, First, or Any. You can also pick a different cabin each way.
-- **Sorting.** Recommended, Comfort, Cheapest and Fastest. Filters for stops, price, refundability and airline.
+- **Sorting.** Recommended, Comfort, Cheapest, Fastest and Greenest (lowest CO₂). The lowest-emission flights get a green leaf.
+- **Filters.** Stops, price, departure and arrival time sliders each way, journey time, checked bags, cabin bag, refundable, changeable, Wi‑Fi, free Wi‑Fi, power, extra legroom, flat bed, private suite, priority boarding and check-in, seat selection, frequent flyer programme, and airline. All come from Duffel offer data. Ask Nomad understands all of them.
+- **Not available:** meals, Starlink or other Wi‑Fi providers, lounges and alliances. Duffel offers do not include this data.
 - **Ask Nomad.** Describe a trip in plain words. Claude fills in the search, flags every guess, and asks about anything missing. You correct it in words or in the form, then search.
 - **Recent searches.** Saved in your browser and shown on the home page.
 - **Checkout.** Traveller details with passport-name and age checks, then a payment page.

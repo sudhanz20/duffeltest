@@ -258,7 +258,30 @@ function slimOffer(o) {
     };
   });
   const cond = o.conditions || {};
+  // Facts the filters use. "Main flight" means the longest flight in each direction,
+  // so a short connecting hop without Wi-Fi does not hide an otherwise good trip.
+  const mains = slices.map((sl) => sl.segments.reduce((a, b) => ((b.minutes || 0) > (a.minutes || 0) ? b : a)));
+  const all = slices.flatMap((sl) => sl.segments);
+  const am = (g) => g.amenities || {};
+  const qty = (g, type) => (g.baggages || []).filter((b) => b.type === type).reduce((t, b) => t + b.quantity, 0);
+  const rawCond = (key) => o.slices.every((sl) => sl.conditions && sl.conditions[key] === true);
+  const FLAT = ['full_flat', 'full_flat_pod', 'private_suite'];
+  const features = {
+    checkedBags: all.length ? Math.min(...all.map((g) => qty(g, 'checked'))) : 0,
+    cabinBag: all.every((g) => qty(g, 'carry_on') > 0),
+    wifi: mains.every((g) => am(g).wifi && am(g).wifi.available),
+    wifiFree: mains.every((g) => am(g).wifi && am(g).wifi.available && am(g).wifi.cost === 'free'),
+    power: mains.every((g) => am(g).power && am(g).power.available),
+    flatBed: mains.every((g) => am(g).seat && FLAT.includes(am(g).seat.type)),
+    suite: mains.every((g) => am(g).seat && am(g).seat.type === 'private_suite'),
+    legroom: mains.every((g) => am(g).seat && (am(g).seat.legroom === 'more' || FLAT.includes(am(g).seat.type))),
+    priorityBoarding: rawCond('priority_boarding'),
+    priorityCheckIn: rawCond('priority_check_in'),
+    seatSelection: rawCond('advance_seat_selection'),
+    loyalty: o.supported_loyalty_programmes || [],
+  };
   return {
+    features,
     id: o.id,
     owner: {
       name: o.owner.name,
@@ -334,6 +357,7 @@ function topOffers(offers, n = 150) {
   by((a, b) => a.total - b.total);
   by((a, b) => b.comfort - a.comfort || a.total - b.total);
   by((a, b) => a.minutes - b.minutes);
+  by((a, b) => (a.emissionsKg ?? 1e9) - (b.emissionsKg ?? 1e9) || a.total - b.total);
   return [...pick];
 }
 
@@ -367,6 +391,12 @@ function combine(a, b) {
     minutes: a.minutes + b.minutes,
     stops: a.stops + b.stops,
     comfort: (a.comfort + b.comfort) / 2,
+    features: Object.fromEntries(
+      Object.keys(a.features).map((k) => [
+        k,
+        k === 'loyalty' ? a.features.loyalty.filter((x) => b.features.loyalty.includes(x)) : k === 'checkedBags' ? Math.min(a.features[k], b.features[k]) : a.features[k] && b.features[k],
+      ])
+    ),
   };
 }
 

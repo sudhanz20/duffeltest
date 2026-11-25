@@ -5,7 +5,8 @@ const Anthropic = require('@anthropic-ai/sdk').default;
 // Haiku is the cheapest current Claude model. Set ANTHROPIC_MODEL to use another one.
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
 const CABINS = ['economy', 'premium_economy', 'business', 'first', 'any'];
-const SORTS = ['recommended', 'comfort', 'price', 'fastest'];
+const SORTS = ['recommended', 'comfort', 'price', 'fastest', 'greenest'];
+const FEATURES = ['cabinBag', 'wifi', 'wifiFree', 'power', 'flatBed', 'suite', 'legroom', 'priorityBoarding', 'priorityCheckIn', 'seatSelection'];
 
 const str = { type: 'string' };
 const nullable = (schema) => ({ anyOf: [schema, { type: 'null' }] });
@@ -29,8 +30,22 @@ const PLAN_SCHEMA = obj({
     sort: { type: 'string', enum: SORTS },
     directOnly: { type: 'boolean' },
     refundable: { type: 'boolean' },
+    changeable: { type: 'boolean' },
     maxPrice: nullable({ type: 'number' }),
     currency: nullable(str),
+    times: {
+      type: 'array',
+      items: obj({
+        direction: { type: 'string', enum: ['outbound', 'return'] },
+        which: { type: 'string', enum: ['depart', 'arrive'] },
+        after: nullable({ type: 'integer' }),
+        before: nullable({ type: 'integer' }),
+      }),
+    },
+    maxHours: nullable({ type: 'number' }),
+    checkedBags: nullable({ type: 'integer' }),
+    features: { type: 'array', items: { type: 'string', enum: FEATURES } },
+    loyalty: { type: 'array', items: str },
   }),
   assumptions: { type: 'array', items: obj({ field: str, text: str }) },
   questions: { type: 'array', items: str },
@@ -48,7 +63,13 @@ How to fill the fields:
 - trip is "oneway" only when the traveller says one way or gives no return. Then ret is null.
 - adults is at least 1. Children are aged 2 to 17; infants are under 2. "Family of four" with no ages means 2 adults and 2 children: guess ages 8 and 10 and record that in assumptions.
 - cabin is "any" unless the traveller names a class. Set mixed true only when they want a different class each way, and then fill cabinOut and cabinBack. Otherwise set cabinOut "business" and cabinBack "economy".
-- prefs.sort: "price" for cheap or budget, "comfort" for comfortable, flat bed or luxury, "fastest" for quickest, else "recommended". directOnly is true for nonstop or direct. refundable is true only when asked. maxPrice is a total budget for everyone if given, with its 3-letter currency.
+- prefs.sort: "price" for cheap or budget, "comfort" for comfortable or luxury, "fastest" for quickest, "greenest" for low emissions, eco or sustainable, else "recommended". directOnly is true for nonstop or direct. refundable and changeable are true only when asked. maxPrice is a total budget for everyone if given, with its 3-letter currency.
+- prefs.times: one entry per time window asked for, in whole hours from 0 to 24 local time. "Morning flight out" is outbound depart after 5 before 12. "Afternoon" is 12 to 18, "evening" 17 to 24, "red-eye" or "overnight" 20 to 24. "Land before 6pm" is arrive before 18. Leave the array empty when no time is mentioned.
+- prefs.maxHours: the longest journey each way the traveller accepts, in hours, else null.
+- prefs.checkedBags: checked bags each traveller wants included in the fare (1 or 2), else null. "With luggage" means 1.
+- prefs.features, only when asked: cabinBag (cabin bag included), wifi, wifiFree, power (charging, sockets), flatBed (lie-flat bed), suite (private suite, door), legroom (extra legroom), priorityBoarding, priorityCheckIn, seatSelection (choose seats free).
+- prefs.loyalty: 2-letter airline codes whose frequent flyer programme the traveller wants to earn with, for example ["BA"] for Avios or Executive Club, ["AA"] for AAdvantage, ["LH"] for Miles & More, ["VS"] for Flying Club, ["AF"] for Flying Blue. Else empty.
+- Nomad cannot filter by meals, a specific Wi-Fi provider such as Starlink, lounges or alliances, because the airline data does not include them. If the traveller asks for one, add an assumption saying Nomad cannot check it, and use the closest filter (Wi-Fi for Starlink).
 
 Every guess you make goes in assumptions, as one short plain sentence naming the field. Put a question in "questions" only when a search cannot run without the answer. Keep questions short.
 summary is one plain sentence that describes the search, for example "Return flights from London to Lisbon, 12 to 19 April, 2 adults, economy."
@@ -171,6 +192,15 @@ function registerAi(app, { duffel, broadcast, route, fail }) {
           refundable: Boolean(raw.prefs && raw.prefs.refundable),
           maxPrice: raw.prefs && raw.prefs.maxPrice > 0 ? raw.prefs.maxPrice : null,
           currency: (raw.prefs && raw.prefs.currency) || null,
+          changeable: Boolean(raw.prefs && raw.prefs.changeable),
+          times: ((raw.prefs && raw.prefs.times) || [])
+            .filter((t) => t && (t.after != null || t.before != null) && (trip === 'return' || t.direction !== 'return'))
+            .map((t) => ({ direction: t.direction === 'return' ? 'return' : 'outbound', which: t.which === 'arrive' ? 'arrive' : 'depart', after: clampInt(t.after ?? 0, 0, 24), before: clampInt(t.before ?? 24, 0, 24) }))
+            .filter((t) => t.after < t.before),
+          maxHours: raw.prefs && raw.prefs.maxHours > 0 ? raw.prefs.maxHours : null,
+          checkedBags: raw.prefs && raw.prefs.checkedBags > 0 ? clampInt(raw.prefs.checkedBags, 1, 2) : null,
+          features: ((raw.prefs && raw.prefs.features) || []).filter((k) => FEATURES.includes(k)),
+          loyalty: ((raw.prefs && raw.prefs.loyalty) || []).map((c) => String(c).toUpperCase()).filter((c) => /^[A-Z0-9]{2}$/.test(c)),
         },
       };
       if (from && to && from.code === to.code) questions.push('From and To are the same place. Where are you flying from?');
