@@ -3,98 +3,75 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Duffel Flights Playground</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>Nomad · Flights, thoughtfully</title>
+  <meta name="description" content="Nomad: search, compare and book flights with care." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%230e1a2b'/%3E%3Cpath d='M16 5l3.2 11L16 27l-3.2-11z' fill='%23d8bd8a'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/nomad.css" />
 </head>
 <body>
-  <header>
-    <h1>Duffel Flights Playground</h1>
-    <div id="status" class="status">Checking setup…</div>
+  <header class="nav" id="nav">
+    <div class="wrap">
+      <a class="brand" href="#/" aria-label="Nomad home"><span id="brand-mark"></span><span>Nomad</span></a>
+      <nav class="nav-links">
+        <a href="#/" data-nav="home" class="hide-sm">Flights</a>
+        <a href="#/trips" data-nav="trips">My bookings</a>
+        <button type="button" id="dev-open">Developer</button>
+        <span class="mode-pill" id="mode-pill" hidden>Test mode</span>
+      </nav>
+    </div>
   </header>
 
-  <nav class="tabs">
-    <button data-tab="flights" class="active">Flights</button>
-    <button data-tab="webhooks">Webhook setup</button>
-  </nav>
+  <main id="view"></main>
 
-  <main>
-    <section class="panel-left">
-      <!-- FLIGHTS -->
-      <div class="tab" id="tab-flights">
-        <h2>1. Search offers</h2>
-        <form id="flight-search" class="grid">
-          <label>From <input name="origin" value="LHR" maxlength="3" required /></label>
-          <label>To <input name="destination" value="JFK" maxlength="3" required /></label>
-          <label>Depart <input name="departure_date" type="date" required /></label>
-          <label>Return (optional) <input name="return_date" type="date" /></label>
-          <label>Adults <input name="adults" type="number" min="1" max="9" value="1" /></label>
-          <label>Cabin
-            <select name="cabin_class">
-              <option>economy</option><option>premium_economy</option><option>business</option><option>first</option>
-            </select>
-          </label>
-          <button type="submit">Search offers</button>
-        </form>
-        <p class="hint">Tip: in test mode, look for <b>Duffel Airways (ZZ)</b>. Its offers book and cancel reliably.</p>
-        <div id="flight-offers" class="list"></div>
+  <footer>
+    <div class="wrap">
+      <span>© Nomad. Flights powered by Duffel.</span>
+      <span id="footer-mode">Test bookings only. No real tickets are issued.</span>
+    </div>
+  </footer>
 
-        <h2>2. Book selected offer</h2>
-        <form id="flight-book" class="grid">
-          <label class="wide">Offer ID <input name="offer_id" placeholder="off_… (click Select above)" required /></label>
-          <label>Title <select name="title"><option>mr</option><option>ms</option><option>mrs</option><option>miss</option><option>dr</option></select></label>
-          <label>Gender <select name="gender"><option value="m">m</option><option value="f">f</option></select></label>
-          <label>Given name <input name="given_name" value="Amelia" required /></label>
-          <label>Family name <input name="family_name" value="Earhart" required /></label>
-          <label>Born on <input name="born_on" type="date" value="1987-07-24" required /></label>
-          <label>Email <input name="email" type="email" value="amelia@example.com" required /></label>
-          <label>Phone (E.164) <input name="phone_number" value="+442080160509" required /></label>
-          <label class="check"><input type="checkbox" name="hold" /> Hold (pay later) instead of instant</label>
-          <button type="submit">Create order</button>
-        </form>
-
-        <h2>3. Cancel order</h2>
-        <form id="flight-cancel" class="grid">
-          <label class="wide">Order ID <input name="order_id" placeholder="ord_…" required /></label>
-          <label class="check"><input type="checkbox" name="quoteOnly" /> Only get the refund quote (do not confirm)</label>
-          <button type="submit" class="danger">Cancel order</button>
-        </form>
-      </div>
-
-      <!-- WEBHOOKS -->
-      <div class="tab hidden" id="tab-webhooks">
-        <h2>Receive webhooks</h2>
-        <p class="hint" id="wh-public-hint" hidden>This page is on a public URL, so no tunnel is needed. The URL below is already filled in.</p>
-        <ol class="steps" id="wh-local-steps">
-          <li>Duffel cannot reach <code>localhost</code>. Start a tunnel in a second terminal:<br />
-            <code>npx cloudflared tunnel --url http://localhost:<span class="port">3000</span></code><br />
-            or <code>ngrok http <span class="port">3000</span></code></li>
-          <li>Paste the public <code>https://…</code> URL it prints below and click Register. The server adds <code>/webhook</code>, subscribes to all events, and saves the secret into <code>.env</code>.</li>
-          <li>Click Ping. A <code>ping.triggered</code> event should appear in the live feed with a green "verified" badge.</li>
-        </ol>
-        <form id="wh-create" class="grid">
-          <label class="wide">Tunnel URL <input name="url" placeholder="https://something.trycloudflare.com" required /></label>
-          <button type="submit">Register webhook</button>
-        </form>
-        <p class="hint">On Vercel the server cannot write <code>.env</code>. Copy the <code>secret</code> from the live feed into the <code>DUFFEL_WEBHOOK_SECRET</code> environment variable and redeploy.</p>
-        <p class="hint">Tunnel URLs change on each restart of a free tunnel. Register again when it changes, and delete the old webhook.</p>
-        <button id="wh-list">List my webhooks</button>
-        <div id="wh-list-out" class="list"></div>
-      </div>
-    </section>
-
-    <section class="panel-right">
-      <div class="feed-head">
-        <h2>Live feed</h2>
-        <div>
-          <label class="check"><input type="checkbox" id="show-api" checked /> API calls</label>
-          <label class="check"><input type="checkbox" id="show-wh" checked /> Webhooks</label>
-          <button id="clear-feed" class="small">Clear</button>
+  <aside class="drawer" id="drawer" aria-label="Developer tools">
+    <div class="drawer-head">
+      <h3>Developer</h3>
+      <button type="button" class="btn btn-ghost btn-sm" id="dev-close">Close</button>
+    </div>
+    <div class="tabs">
+      <button type="button" class="on" data-dtab="feed">Live feed</button>
+      <button type="button" data-dtab="hooks">Webhooks</button>
+    </div>
+    <div class="drawer-body">
+      <div data-dpanel="feed">
+        <div class="count-line">
+          <span>
+            <label class="check" style="display:inline-flex"><input type="checkbox" id="show-api" checked /> API calls</label>
+            <label class="check" style="display:inline-flex;margin-left:12px"><input type="checkbox" id="show-wh" checked /> Webhooks</label>
+          </span>
+          <button type="button" class="btn-link" id="clear-feed">Clear</button>
         </div>
+        <div id="feed"></div>
       </div>
-      <div id="feed"></div>
-    </section>
-  </main>
+      <div data-dpanel="hooks" hidden>
+        <div id="dev-status" class="small muted"></div>
+        <ol class="dev-steps" id="wh-local-steps">
+          <li>Duffel cannot reach <code>localhost</code>. Start a tunnel in a second terminal:<br /><code>npx cloudflared tunnel --url http://localhost:<span class="port">3000</span></code></li>
+          <li>Paste the public <code>https://</code> URL below and register. Nomad adds <code>/webhook</code> and subscribes to all flight events.</li>
+          <li>Click Ping. A <code>ping.triggered</code> event appears in the live feed, marked verified.</li>
+        </ol>
+        <p class="notice info hidden" id="wh-public-hint">This site has a public URL, so Duffel can reach it directly. The URL is already filled in.</p>
+        <form id="wh-create" class="find" style="padding:12px">
+          <div class="fg"><label>Public URL</label><input class="input" name="url" placeholder="https://…" required /></div>
+          <button class="btn btn-primary" type="submit">Register webhook</button>
+        </form>
+        <p class="small muted">On Vercel the server cannot save the secret to <code>.env</code>. Copy <code>secret</code> from the live feed into the <code>DUFFEL_WEBHOOK_SECRET</code> setting and redeploy.</p>
+        <button type="button" class="btn btn-ghost btn-sm" id="wh-list">List my webhooks</button>
+        <div id="wh-list-out" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </aside>
 
-  <script src="app.js"></script>
+  <script type="module" src="/js/app.js"></script>
 </body>
 </html>

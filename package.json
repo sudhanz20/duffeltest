@@ -1,11 +1,13 @@
 {
-  "name": "duffeltest",
+  "name": "nomad",
   "version": "1.0.0",
   "private": true,
-  "description": "Duffel flights test playground: search, book, cancel, live webhooks",
+  "description": "Nomad: flight search and booking on the Duffel API",
   "main": "server.js",
   "type": "commonjs",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
