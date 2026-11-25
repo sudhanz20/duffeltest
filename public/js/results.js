@@ -74,7 +74,7 @@ function bagText(baggages) {
   return `${checked ? `${checked} checked` : 'No checked bag'} · ${carry ? `${carry} cabin` : 'No cabin bag'}`;
 }
 
-function detailsHtml(o) {
+export function detailsHtml(o) {
   return o.slices
     .map((sl, si) => {
       let html = `<h4 class="serif" style="font-weight:400;margin:${si ? '18px' : '0'} 0 6px">${si === 0 ? 'Outbound' : 'Return'} · ${esc(sl.originCity)} → ${esc(sl.destinationCity)}</h4>`;

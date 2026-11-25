@@ -5,12 +5,24 @@ import { renderResults } from './results.js';
 import { renderTravellers, renderPayment, renderConfirmation } from './checkout.js';
 import { renderTrips, renderManage } from './trips.js';
 import { initDev } from './dev.js';
+import { isLux, setLux, renderLuxHome, renderLuxResults } from './lux.js';
 
 $('#brand-mark').innerHTML = ICON.compass;
 
+// Nomad Lux is a mode: #/lux turns it on, the classic home page turns it off.
+// Results, checkout and bookings follow whichever mode is on.
+const classicHome = (view) => {
+  setLux(false);
+  return renderHome(view);
+};
+const results = (view) => (isLux() ? renderLuxResults(view) : renderResults(view));
+const HERO = [classicHome, renderLuxHome];
+
 const routes = [
-  [/^#?\/?$/, renderHome, 'home'],
-  [/^#\/results$/, renderResults, 'home'],
+  [/^#?\/?$/, classicHome, 'home'],
+  [/^#\/lux$/, renderLuxHome, 'lux'],
+  [/^#\/lux\/results$/, renderLuxResults, 'lux'],
+  [/^#\/results$/, results, 'home'],
   [/^#\/checkout$/, renderTravellers, 'home'],
   [/^#\/payment$/, renderPayment, 'home'],
   [/^#\/confirmation$/, renderConfirmation, 'trips'],
@@ -31,15 +43,28 @@ function route() {
     const m = hash.match(re);
     if (m) {
       $$('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav && hash !== '#/' && hash !== ''));
-      // The home page has a transparent nav over the hero; other pages get a solid bar.
-      $('#nav').classList.toggle('solid', fn !== renderHome);
+      // The home pages have a transparent nav over the hero; other pages get a solid bar.
+      $('#nav').classList.toggle('solid', !HERO.includes(fn));
       view.innerHTML = '';
       window.scrollTo(0, 0);
       cleanup = fn(view, ...m.slice(1));
+      paintMode();
       return;
     }
   }
   location.hash = '#/';
+}
+
+function paintMode() {
+  const on = isLux();
+  document.body.classList.toggle('lux', on);
+  $('.brand').href = on ? '#/lux' : '#/';
+  $('#brand-name').textContent = on ? 'Nomad Lux' : 'Nomad';
+  $('[data-nav=home]').href = on ? '#/lux' : '#/';
+  const sw = $('#lux-link');
+  sw.href = on ? '#/' : '#/lux';
+  sw.textContent = on ? 'Classic' : 'Lux';
+  sw.title = on ? 'Back to classic Nomad: every cabin, every price' : 'Nomad Lux: Premium, Business and First, ranked by time and comfort';
 }
 
 window.addEventListener('hashchange', route);
