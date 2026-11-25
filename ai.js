@@ -2,7 +2,8 @@
 // The traveller reviews the result, corrects it in words or in the form, then searches.
 const Anthropic = require('@anthropic-ai/sdk').default;
 
-const MODEL = 'claude-opus-5-5';
+// Haiku is the cheapest current Claude model. Set ANTHROPIC_MODEL to use another one.
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
 const CABINS = ['economy', 'premium_economy', 'business', 'first', 'any'];
 const SORTS = ['recommended', 'comfort', 'price', 'fastest'];
 
@@ -104,11 +105,9 @@ function registerAi(app, { duffel, broadcast, route, fail }) {
       const started = Date.now();
       let response;
       try {
-        response = await ai.beta.messages.create({
+        response = await ai.messages.create({
           model: MODEL,
           max_tokens: 16000,
-          betas: ['server-side-fallback-2026-07-01'],
-          fallbacks: 'default',
           system: SYSTEM,
           output_config: { effort: 'low', format: { type: 'json_schema', schema: PLAN_SCHEMA } },
           messages,

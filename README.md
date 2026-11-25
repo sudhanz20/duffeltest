@@ -24,7 +24,7 @@ A flight search and booking app built on the Duffel API. It runs in Duffel test 
 | Search, booking, hold and pay later, date and cabin changes, cancellation | Real Duffel API calls in test mode |
 | Card, Apple Pay, Google Pay, PayPal | Simulated. Every method settles from your Duffel test balance. |
 | Name corrections | Simulated. Duffel's API cannot rename a passenger; airlines do it by hand. Nomad stores the request in your browser. |
-| Ask Nomad | Real Claude API call (model `claude-opus-5-5`). Needs `ANTHROPIC_API_KEY`. Without it the tab shows a notice and the classic search still works. |
+| Ask Nomad | Real Claude API call. Uses `claude-haiku-5-5`, the cheapest model, unless you set `ANTHROPIC_MODEL`. Needs `ANTHROPIC_API_KEY`. Without it the tab shows a notice and the classic search still works. |
 | Mixed cabins (for example Business out, Economy back) | Real, but sold as two one-way tickets with two booking references. Airlines rarely sell this as one ticket. If the second ticket fails, Nomad cancels the first. |
 
 Book **Duffel Airways** flights in test mode. They book, change and cancel reliably. Other airlines can fail in test mode.
@@ -50,6 +50,7 @@ Open **http://localhost:3000**.
    - `DUFFEL_API_KEY`: your `duffel_test_…` token.
    - `PLAYGROUND_PASSWORD`: any password. Without it, anyone with the URL can book on your Duffel account.
    - `ANTHROPIC_API_KEY` (optional): turns on Ask Nomad. Each request is one Claude call.
+   - `ANTHROPIC_MODEL` (optional): the Claude model for Ask Nomad. Default `claude-haiku-5-5`.
 3. Deploy and open the URL. Any username works with the password.
 
 ## Webhooks
