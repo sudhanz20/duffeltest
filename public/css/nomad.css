@@ -72,7 +72,7 @@ input, select { font: inherit; color: inherit; }
 .field:hover { border-color: #d4c9b5; }
 .field:focus-within, .field.open { border-color: var(--brass); box-shadow: 0 0 0 3px rgba(179, 139, 77, .15); }
 .field label, .field .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 2px; }
-.field input { border: 0; outline: 0; padding: 0; width: 100%; font-size: 16px; font-weight: 600; background: none; }
+.field input { border: 0; outline: 0; padding: 0; width: 100%; font-size: 16px; font-weight: 600; background: none; text-overflow: ellipsis; }
 .field input::placeholder { color: #a8aebb; font-weight: 500; }
 .field .sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 [role=button].field { font-size: 16px; font-weight: 600; cursor: pointer; }
@@ -129,6 +129,32 @@ input, select { font: inherit; color: inherit; }
 .cal-day.start.end { background: none; }
 .cal-day.start span, .cal-day.end span { background: var(--ink); color: #fff; }
 .cal-foot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line-2); margin-top: 10px; padding-top: 12px; gap: 16px; }
+.cal-note { flex: 1; text-align: center; }
+.cal-head .cal-top { flex: 1; display: flex; justify-content: center; padding: 0 12px; }
+.cal-hint { font-size: 13px; color: var(--muted); text-align: center; }
+.cal-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; max-width: 360px; background: var(--ivory, #f6f2ea); border-radius: 12px; padding: 4px; }
+.cal-tab { border: 1px solid transparent; background: none; border-radius: 9px; padding: 6px 10px; text-align: left; display: flex; flex-direction: column; gap: 1px; color: var(--text); min-width: 0; }
+.cal-tab small { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.cal-tab b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-tab b i { font-style: normal; font-weight: 400; color: var(--muted); }
+.cal-tab.on { background: #fff; border-color: var(--brass); box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
+.cal-day.preview span { background: transparent; color: var(--ink); border: 1px dashed var(--ink); }
+.cal-day { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+/* Phones: the calendar is a sheet from the bottom of the screen */
+.cal-sheet { position: fixed; inset: 0; z-index: 300; background: rgba(10, 16, 28, .45); display: flex; align-items: flex-end; animation: fade .18s ease-out; }
+.cal.sheet { position: relative; top: auto; left: auto; transform: none; width: 100%; max-height: 88vh; max-height: 88dvh; border-radius: 20px 20px 0 0; padding: 8px 16px calc(12px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; animation: sheet-up .24s cubic-bezier(.2, .8, .2, 1); }
+.cal.sheet .cal-grab { width: 40px; height: 4px; border-radius: 2px; background: var(--line); margin: 2px auto 10px; flex: none; }
+.cal.sheet .cal-top { flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.cal.sheet .cal-tabs { max-width: none; }
+.cal.sheet .cal-dows { width: 100%; border-bottom: 1px solid var(--line-2); }
+.cal.sheet .cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal.sheet .cal-scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-top: 4px; }
+.cal.sheet .cal-month { padding: 8px 0 6px; }
+.cal.sheet .cal-month h4 { text-align: left; margin: 4px 4px 8px; }
+.cal.sheet .cal-day { height: 46px; }
+.cal.sheet .cal-day span { width: 42px; height: 42px; margin: 2px auto; font-size: 15px; }
+.cal.sheet .cal-foot { flex: none; margin-top: 0; }
+@keyframes sheet-up { from { transform: translateY(100%); } }
 
 /* Travellers */
 .pax { top: calc(100% + 8px); right: 0; width: min(420px, 92vw); padding: 18px; max-height: 76vh; overflow: auto; }
@@ -436,8 +462,8 @@ code { background: #f3efe7; padding: 1px 5px; border-radius: 4px; font-size: 13p
   .fg, .fg.w3, .fg.w6 { grid-column: span 2; }
   .fg.w1 { grid-column: span 1; }
   .cal-months { flex-direction: column; gap: 10px; }
-  .cal-month:nth-child(2) { display: none; }
-  .cal { left: 0; transform: none; }
+  .cal-months .cal-month:nth-child(2) { display: none; }
+  .cal:not(.sheet) { left: 0; transform: none; max-width: calc(100vw - 32px); }
   .band .edit { position: static; margin-top: 10px; }
 }
 

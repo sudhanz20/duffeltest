@@ -233,3 +233,40 @@ export function processing(text) {
 }
 
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------- Places ----------
+// The airport name without the city in front or "Airport" at the end:
+// "Barcelona–El Prat Josep Tarradellas Airport" in Barcelona becomes "El Prat Josep Tarradellas".
+export function shortAirport(name, city) {
+  let n = String(name || '').trim();
+  if (city) {
+    const lead = new RegExp(`^${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[–—-]\\s*`, 'i');
+    n = n.replace(lead, '');
+  }
+  const short = n.replace(/\s+(International\s+)?Airport$/i, '').trim();
+  return short || n;
+}
+
+// Every chosen place shows the same way: the city name, then the code and which airport.
+// An airport keeps its full name in `airport`.
+export function placeOf(it) {
+  if (!it || it.type !== 'airport') return it;
+  if (it.airport) return it;
+  const city = it.city || String(it.sub || '').split(',')[0].trim();
+  if (!city) return it;
+  return { type: 'airport', code: it.code, name: city, city, airport: it.name, sub: shortAirport(it.name, city) };
+}
+
+// Turn /api/places results into rows for the lookup list.
+export function placeItems(places) {
+  const items = [];
+  for (const p of places) {
+    if (p.type === 'city') {
+      items.push({ type: 'city', code: p.code, name: p.name, sub: `All airports · ${p.country || ''}` });
+      for (const a of p.airports) items.push({ type: 'airport', code: a.code, name: a.name, city: p.name, sub: p.name, child: true });
+    } else {
+      items.push({ type: 'airport', code: p.code, name: p.name, city: p.city, sub: [p.city, p.country].filter(Boolean).join(', ') });
+    }
+  }
+  return items.slice(0, 12);
+}
