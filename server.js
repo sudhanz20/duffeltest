@@ -400,6 +400,9 @@ function combine(a, b) {
   };
 }
 
+// Duffel prices up to this many flights (slices) as one multi-city ticket.
+const MAX_LEGS = 6;
+
 async function searchOnce(legs, passengers, cabin) {
   const data = {
     slices: legs.map((l) => ({ origin: l.origin, destination: l.destination, departure_date: l.date })),
@@ -415,10 +418,12 @@ app.post(
   route(async (req) => {
     const b = req.body || {};
     const legs = Array.isArray(b.legs) ? b.legs : [];
-    if (!legs.length || legs.length > 2) throw fail(400, 'Search one way or return.');
-    for (const l of legs) {
+    if (!legs.length || legs.length > MAX_LEGS) throw fail(400, `Search between 1 and ${MAX_LEGS} flights.`);
+    legs.forEach((l, i) => {
       if (!l.origin || !l.destination || !l.date) throw fail(400, 'Each flight needs a from, a to and a date.');
-    }
+      if (l.origin === l.destination) throw fail(400, `Flight ${i + 1} starts and ends in the same place.`);
+      if (i && l.date < legs[i - 1].date) throw fail(400, 'Flights must be in date order.');
+    });
     const passengers = buildPassengers(b.passengers || {});
     const legCabins = legs.map((l) => (CABINS.includes(l.cabin) ? l.cabin : 'any'));
     const mixed = legs.length === 2 && legCabins[0] !== legCabins[1];

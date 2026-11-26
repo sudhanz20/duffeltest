@@ -7,6 +7,7 @@ A flight search and booking app built on the Duffel API. It runs in Duffel test 
 - **Search.** Airport and city lookup, a date-range calendar, one way or return.
 - **Travellers.** Adults, children with their ages, and infants on a lap. Up to 9 people.
 - **Frequent flyer.** Add loyalty numbers per adult. Airlines may return member fares.
+- **Multi-city.** Up to 6 flights in one booking, for example London → Paris → Rome → London. Each flight has its own route and date. Ask Nomad plans these too ("Paris for 3 nights, then Rome, then home").
 - **Cabins.** Economy, Premium, Business, First, or Any. You can also pick a different cabin each way.
 - **Sorting.** Recommended, Comfort, Cheapest, Fastest and Greenest (lowest CO₂). The lowest-emission flights get a green leaf.
 - **Filters.** Stops, price, departure and arrival time sliders each way, journey time, checked bags, cabin bag, refundable, changeable, Wi‑Fi, free Wi‑Fi, power, extra legroom, flat bed, private suite, priority boarding and check-in, seat selection, frequent flyer programme, and airline. All come from Duffel offer data. Ask Nomad understands all of them.

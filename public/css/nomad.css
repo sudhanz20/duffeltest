@@ -559,3 +559,29 @@ input::placeholder { text-transform: none; }
   .trip-next h3 { font-size: 24px; }
   #trips .tab { padding: 10px 12px; }
 }
+
+/* ---------- Multi-city ---------- */
+.search-card.is-multi .search-row { grid-template-columns: 1fr auto; }
+.search-card.is-multi .search-row .f-from,
+.search-card.is-multi .search-row .f-to,
+.search-card.is-multi .search-row .f-dates,
+.search-card.is-multi .search-row .swap { display: none; }
+.legs { display: grid; gap: 8px; margin-bottom: 8px; }
+.leg-row { display: grid; grid-template-columns: 26px 1fr 1fr .8fr 32px; gap: 8px; align-items: stretch; }
+.leg-no { align-self: center; width: 26px; height: 26px; border-radius: 50%; background: var(--ivory); display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--muted); }
+.leg-del { align-self: center; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--muted); font-size: 18px; line-height: 1; }
+.leg-del:hover { border-color: var(--rose); color: var(--rose); }
+.add-leg { justify-self: start; margin: 2px 0 2px 34px; }
+.ai-flights { grid-column: 1 / -1; }
+.ai-flights ol { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 3px; font-size: 14px; font-weight: 600; }
+.ai-flights .when { font-weight: 400; color: var(--muted); margin-left: 6px; }
+.ai-flights .need { color: var(--rose); }
+@media (max-width: 680px) {
+  .search-card.is-multi .search-row { grid-template-columns: 1fr; }
+  .leg-row { grid-template-columns: 1fr 1fr 32px; }
+  .leg-no { display: none; }
+  .leg-row .f-leg-date { grid-column: 1 / 3; }
+  .leg-row .leg-del { grid-row: 1; grid-column: 3; }
+  .add-leg { margin-left: 0; }
+  .leg-row { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+}
