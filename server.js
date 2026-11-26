@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const { registerAi } = require('./ai');
+const { registerLux } = require('./lux');
 const metrics = require('./metrics');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -189,6 +190,7 @@ app.get('/api/status', (req, res) => {
 });
 
 registerAi(app, { duffel, broadcast, route, fail });
+registerLux(app, { duffel, broadcast, route, fail, searchOnce, dedupe, buildPassengers });
 
 // ---------------------------------------------------------------------------
 // Places (airport and city lookup)

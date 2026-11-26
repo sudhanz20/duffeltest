@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/nomad.css" />
+  <link rel="stylesheet" href="/css/lux.css" />
   <!-- Vercel Web Analytics. Nomad uses #/ routes, so the router reports each page view itself. -->
   <script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
   <script defer src="/_vercel/insights/script.js" data-disable-auto-track="1"></script>
@@ -17,10 +18,11 @@
 <body>
   <header class="nav" id="nav">
     <div class="wrap">
-      <a class="brand" href="#/" aria-label="Nomad home"><span id="brand-mark"></span><span>Nomad</span></a>
+      <a class="brand" href="#/" aria-label="Nomad home"><span id="brand-mark"></span><span id="brand-name">Nomad</span></a>
       <nav class="nav-links">
         <a href="#/" data-nav="home" class="hide-sm">Flights</a>
         <a href="#/trips" data-nav="trips">My bookings</a>
+        <a href="#/lux" id="lux-link" class="lux-link">Lux</a>
         <button type="button" id="dev-open">Developer</button>
         <span class="mode-pill" id="mode-pill" hidden>Test mode</span>
       </nav>

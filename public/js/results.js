@@ -82,7 +82,7 @@ export function sliceLabel(slices, i) {
   return home ? (i ? 'Return' : 'Outbound') : `Flight ${i + 1}`;
 }
 
-function detailsHtml(o) {
+export function detailsHtml(o) {
   return o.slices
     .map((sl, si) => {
       let html = `<h4 class="serif" style="font-weight:400;margin:${si ? '18px' : '0'} 0 6px">${sliceLabel(o.slices, si)} · ${esc(sl.originCity)} → ${esc(sl.destinationCity)}</h4>`;

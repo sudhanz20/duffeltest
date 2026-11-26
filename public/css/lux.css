@@ -1,0 +1,127 @@
+/* Nomad Lux: a quieter, darker, more spacious skin on the Nomad design system.
+   Everything is scoped to body.lux (set on Lux pages, results and checkout in Lux mode)
+   or to lux-* classes, so classic Nomad is unchanged. */
+
+body.lux {
+  --ink: #0d0d10;
+  --ink-2: #17171c;
+  --ink-3: #2a2a31;
+  --paper: #f4f1eb;
+  --ivory: #ece6da;
+  --line: #e0d8c8;
+  --line-2: #ebe5d8;
+  --brass: #9c7c4b;
+  --brass-2: #e3cfa3;
+  --brass-soft: #f2eadb;
+  --muted: #6c6a66;
+  --shadow: 0 1px 2px rgba(13, 13, 16, .05), 0 12px 32px rgba(13, 13, 16, .08);
+}
+body.lux .nav.solid { background: rgba(13, 13, 16, .97); border-bottom: 1px solid rgba(227, 207, 163, .18); }
+body.lux .brand span { letter-spacing: .06em; }
+body.lux .btn-brass { background: linear-gradient(180deg, #c8ab78, #9c7c4b); box-shadow: 0 6px 18px rgba(156, 124, 75, .28); }
+body.lux .btn-primary { background: var(--ink); }
+body.lux footer { background: var(--ink); color: rgba(255, 255, 255, .55); border-top: 0; }
+
+.nav-links .lux-link { border: 1px solid rgba(227, 207, 163, .5); color: #e3cfa3 !important; letter-spacing: .08em; font-size: 13px !important; }
+.nav-links .lux-link:hover { background: rgba(227, 207, 163, .12) !important; }
+
+/* ---------- Lux home ---------- */
+.lux-hero { min-height: 700px; }
+.lux-hero::after { background: linear-gradient(180deg, rgba(13, 13, 16, .7) 0%, rgba(13, 13, 16, .35) 40%, rgba(13, 13, 16, .88) 100%); }
+.lux-hero h1 { letter-spacing: -.01em; }
+.lux-switch button.on svg { color: var(--brass); }
+.lux-card { background: rgba(255, 255, 255, .985); }
+.lux-row { grid-template-columns: 1.15fr 1.15fr 1.25fr 1.25fr auto; }
+.lux-legs { display: grid; gap: 8px; }
+.lux-legs:empty { display: none; }
+.lux-legs > .btn-link { justify-self: start; margin: 4px 4px 2px; }
+.lux-leg { display: grid; grid-template-columns: 74px 1fr 1fr 180px 28px; gap: 8px; align-items: center; margin-top: 8px; }
+.lux-leg-n { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.lux-leg input[type=date] { border: 0; outline: 0; padding: 0; width: 100%; font-size: 15px; font-weight: 600; background: none; }
+.lux-leg .x { border: 0; background: none; color: var(--muted); font-size: 20px; }
+.lux-cabins { display: grid; gap: 6px; }
+.lux-cabin { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 10px 12px; text-align: left; }
+.lux-cabin span { font-size: 12px; color: var(--muted); }
+.lux-cabin.on { border-color: var(--ink); background: var(--ink); color: #fff; }
+.lux-cabin.on span { color: var(--brass-2); }
+
+.lux-body { padding-bottom: 40px; }
+.lux-how { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px 48px; padding: 64px 0 16px; align-items: start; }
+.lux-how-head h2 { font-weight: 400; font-size: 36px; margin: 0 0 8px; line-height: 1.1; }
+.lux-how .eyebrow { color: var(--brass); }
+.lux-weights { list-style: none; counter-reset: w; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
+.lux-weights li { counter-increment: w; display: grid; grid-template-columns: 34px 1fr; padding: 14px 0; border-top: 1px solid var(--line); }
+.lux-weights li::before { content: counter(w, decimal-leading-zero); grid-row: span 2; font-family: var(--serif); color: var(--brass); font-size: 18px; }
+.lux-weights b { font-weight: 600; }
+.lux-weights span { color: var(--muted); font-size: 14px; }
+.lux-cant { grid-column: 1 / -1; margin: 0; }
+
+/* Concierge ideas */
+.lux-ideas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 4px 0 10px; }
+.lux-idea { display: grid; grid-template-columns: 120px 1fr; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: #fff; }
+.lux-idea img { width: 100%; height: 100%; object-fit: cover; min-height: 180px; }
+.lux-idea-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.lux-idea-body .eyebrow { margin: 0; color: var(--brass); font-size: 11px; }
+.lux-idea-body h3 { margin: 0; font-weight: 400; font-size: 20px; line-height: 1.2; }
+.lux-idea-body p { margin: 0; }
+.lux-hl { margin: 0; padding-left: 16px; font-size: 13px; color: var(--muted); }
+
+/* ---------- Lux results ---------- */
+.lux-band::after { background: linear-gradient(90deg, rgba(13, 13, 16, .9) 0%, rgba(13, 13, 16, .4) 70%, rgba(13, 13, 16, .25)); }
+.lux-results { max-width: 920px; padding: 32px 0 56px; }
+.lux-lede { font-size: 24px; line-height: 1.3; margin: 0 0 6px; }
+.lux-controls { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 20px 0 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.lux-sorts { display: inline-flex; gap: 2px; background: var(--ivory); border-radius: 999px; padding: 4px; flex-wrap: wrap; }
+.lux-sorts button { border: 0; background: none; padding: 7px 14px; border-radius: 999px; font-size: 14px; color: var(--muted); }
+.lux-sorts button.on { background: var(--ink); color: #fff; }
+
+.lux-offer { display: grid; grid-template-columns: 56px 1fr 180px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 14px; transition: box-shadow .15s, border-color .15s; }
+.lux-offer:hover { box-shadow: var(--shadow); border-color: #d6cab3; }
+.lux-offer:first-child { border-color: var(--brass-2); box-shadow: 0 0 0 1px var(--brass-2); }
+.lux-rank { font-size: 30px; color: var(--brass); text-align: center; padding-top: 18px; border-right: 1px solid var(--line-2); }
+.lux-offer-main { padding: 18px 22px; min-width: 0; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.lux-offer-main .details { align-self: stretch; margin: 0 -22px -18px; }
+.lux-airline { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.lux-leg-row { display: grid; gap: 2px; width: 100%; }
+.lux-when { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.lux-times { display: flex; align-items: baseline; gap: 8px; font-size: 15px; }
+.lux-times b { font-family: var(--serif); font-weight: 400; font-size: 24px; }
+.lux-line { flex: 0 1 60px; height: 1px; background: var(--line); align-self: center; }
+.lux-meta { font-size: 13px; color: var(--muted); }
+.lux-why, .lux-warn { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.lux-why li { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--ink); color: var(--brass-2); }
+.lux-warn li { font-size: 12px; color: #8a4a2a; }
+.lux-warn li::before { content: '· '; }
+.lux-offer-side { border-left: 1px solid var(--line-2); padding: 18px; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 6px; text-align: right; }
+.lux-price { font-size: 18px; font-weight: 600; }
+
+@media (max-width: 1020px) {
+  .lux-row { grid-template-columns: 1fr 1fr; }
+  .lux-row .search-btn { grid-column: span 2; }
+  .lux-how { grid-template-columns: 1fr; }
+}
+@media (max-width: 680px) {
+  .lux-row { grid-template-columns: 1fr; }
+  .lux-row .search-btn { grid-column: auto; }
+  .lux-leg { grid-template-columns: 1fr 1fr; }
+  .lux-leg-n { grid-column: 1 / -1; }
+  .lux-leg .x { position: absolute; right: 18px; }
+  .lux-weights { grid-template-columns: 1fr; }
+  .lux-ideas { grid-template-columns: 1fr; }
+  .lux-offer { grid-template-columns: 1fr; }
+  .lux-rank { display: none; }
+  .lux-offer-side { border-left: 0; border-top: 1px solid var(--line-2); flex-direction: row; justify-content: space-between; align-items: center; text-align: left; }
+  .lux-lede { font-size: 20px; }
+}
+
+body.lux .wrap .eyebrow { color: var(--brass); }
+body.lux .hero .eyebrow, body.lux .band .eyebrow { color: var(--brass-2); }
+#lx-ideas .ai-summary { margin-top: 16px; }
+@media (max-width: 680px) {
+  .nav-links { gap: 0; }
+  .nav-links a, .nav-links button { padding: 8px 7px; }
+  .nav-links .lux-link { padding: 5px 9px !important; }
+  body.lux .brand { gap: 6px; }
+  body.lux .brand svg { width: 24px; height: 24px; }
+  body.lux .brand span { font-size: 16px; letter-spacing: .02em; white-space: nowrap; }
+}
