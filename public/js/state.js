@@ -1,5 +1,5 @@
 // App-wide state, kept in memory and mirrored to storage so a refresh does not lose it.
-import { store, ymd, addDays, today } from './util.js';
+import { store, ymd, addDays, today, placeOf } from './util.js';
 
 function session(key, fallback) {
   try {
@@ -74,8 +74,17 @@ export const state = {
   confirmation: session('nomad.confirmation', null),
 };
 
+// Searches saved before places showed as "City · CODE" still show the long airport name.
+function tidyPlaces(s) {
+  s.from = placeOf(s.from);
+  s.to = placeOf(s.to);
+  if (s.legs) for (const l of s.legs) Object.assign(l, { from: placeOf(l.from), to: placeOf(l.to) });
+  return s;
+}
+tidyPlaces(state.search);
+
 export function persist(key) {
-  if (key === 'search') store.set('nomad.search', state.search);
+  if (key === 'search') store.set('nomad.search', tidyPlaces(state.search));
   if (key === 'results') saveSession('nomad.results', state.results);
   if (key === 'offer') saveSession('nomad.offer', state.offer);
   if (key === 'travellers') saveSession('nomad.travellers', state.travellers);

@@ -110,7 +110,7 @@ function registerAi(app, { duffel, broadcast, route, fail }) {
       if (hit && hit.iata_code) {
         return hit.type === 'city'
           ? { code: hit.iata_code, name: hit.name, sub: `All airports · ${hit.iata_country_code || ''}`, type: 'city' }
-          : { code: hit.iata_code, name: hit.name, sub: [hit.city_name, hit.iata_country_code].filter(Boolean).join(', '), type: 'airport' };
+          : { code: hit.iata_code, name: hit.name, city: hit.city_name || '', sub: [hit.city_name, hit.iata_country_code].filter(Boolean).join(', '), type: 'airport' };
       }
     }
     return null;

@@ -2,6 +2,7 @@
 // Lux searches Premium economy, Business and First only, and ranks by time and comfort.
 // Checkout and My bookings are shared with classic Nomad.
 import { $, $$, esc, api, toast, fmtDay, hhmm, dayDiff, dur, money, ICON, cityImg, img, store, ymd, addDays, today } from './util.js';
+import { placeItems, placeOf } from './util.js';
 import { state, persist, go } from './state.js';
 import { createCalendar } from './calendar.js';
 import { logoHtml, detailsHtml } from './results.js';
@@ -36,6 +37,10 @@ function loadLux() {
   const s = { ...defaultLux(), ...store.get('nomad.lux.search', {}) };
   if (!s.depart || s.depart < ymd(today())) Object.assign(s, { depart: defaultLux().depart, ret: defaultLux().ret });
   s.legs = (s.legs || []).filter((l) => !l.date || l.date >= ymd(today()));
+  // Searches saved before places showed as "City · CODE" still show the long airport name.
+  s.from = placeOf(s.from);
+  s.to = placeOf(s.to);
+  for (const l of s.legs) Object.assign(l, { from: placeOf(l.from), to: placeOf(l.to) });
   return s;
 }
 const lux = loadLux();
@@ -79,7 +84,7 @@ function bindPlace(inp, field, onPick, pops) {
   };
   const pick = (it) => {
     pops.close();
-    onPick(it);
+    onPick(placeOf(it));
     inp.blur();
   };
   list.addEventListener('click', (e) => {
@@ -95,14 +100,7 @@ function bindPlace(inp, field, onPick, pops) {
       try {
         const r = await api('GET', `/api/places?q=${encodeURIComponent(q)}`);
         if (inp.value.trim() !== q) return;
-        items = [];
-        for (const p of r.places) {
-          if (p.type === 'city') {
-            items.push({ type: 'city', code: p.code, name: p.name, sub: `All airports · ${p.country || ''}` });
-            for (const a of p.airports) items.push({ type: 'airport', code: a.code, name: a.name, sub: p.name, child: true });
-          } else items.push({ type: 'airport', code: p.code, name: p.name, sub: [p.city, p.country].filter(Boolean).join(', ') });
-        }
-        items = items.slice(0, 12);
+        items = placeItems(r.places);
         hl = items.length ? 0 : -1;
         paint();
         if (!pops.isOpen(list)) pops.open(list, field);
@@ -134,7 +132,7 @@ function popovers() {
     open(el, field) {
       api2.close();
       field.classList.add('open');
-      field.appendChild(el);
+      (el.classList.contains('cal-sheet') ? document.body : field).appendChild(el);
       cur = { el, field };
     },
     close() {
@@ -221,7 +219,7 @@ export function renderLuxHome(view) {
   const pops = popovers();
   const onDoc = (e) => {
     const f = pops.field();
-    if (f && !f.contains(e.target)) pops.close();
+    if (f && !f.contains(e.target) && !(e.target.closest && e.target.closest('.cal-sheet'))) pops.close();
   };
   document.addEventListener('click', onDoc);
 

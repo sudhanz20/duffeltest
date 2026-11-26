@@ -1,5 +1,6 @@
 // Home page: hero, search form, recent searches and destinations.
 import { $, $$, esc, api, toast, fmtDay, ymd, addDays, today, ICON, CABIN_LABEL, img, cityImg, DESTINATIONS, store } from './util.js';
+import { placeItems, placeOf } from './util.js';
 import { state, persist, go, recentSearches, addRecent, clearRecent, paxCount, legsOf, syncMulti, startMulti, MAX_LEGS } from './state.js';
 import { createCalendar } from './calendar.js';
 import { mountAi } from './ai.js';
@@ -122,7 +123,8 @@ export function renderHome(view) {
   function openPop(el, field) {
     close();
     field.classList.add('open');
-    field.appendChild(el);
+    // A phone calendar is a sheet over the whole page, so it lives on the body.
+    (el.classList.contains('cal-sheet') ? document.body : field).appendChild(el);
     open = { el, field };
   }
 
@@ -184,7 +186,7 @@ export function renderHome(view) {
     const choose = (it) => {
       close();
       inp.blur();
-      onChoose(it);
+      onChoose(placeOf(it));
     };
 
     const renderList = () => {
@@ -213,16 +215,7 @@ export function renderHome(view) {
         try {
           const r = await api('GET', `/api/places?q=${encodeURIComponent(q)}`);
           if (inp.value.trim() !== q) return;
-          items = [];
-          for (const p of r.places) {
-            if (p.type === 'city') {
-              items.push({ type: 'city', code: p.code, name: p.name, sub: `All airports · ${p.country || ''}` });
-              for (const a of p.airports) items.push({ type: 'airport', code: a.code, name: a.name, sub: p.name, child: true });
-            } else {
-              items.push({ type: 'airport', code: p.code, name: p.name, sub: [p.city, p.country].filter(Boolean).join(', ') });
-            }
-          }
-          items = items.slice(0, 12);
+          items = placeItems(r.places);
           hl = items.length ? 0 : -1;
           renderList();
           if (!open || open.el !== list) openPop(list, field);
@@ -468,7 +461,7 @@ export function renderHome(view) {
   });
 
   const outside = (e) => {
-    if (open && !open.field.contains(e.target)) close();
+    if (open && !open.field.contains(e.target) && !open.el.contains(e.target)) close();
   };
   document.addEventListener('mousedown', outside);
 
