@@ -153,6 +153,21 @@ export const DESTINATIONS = [
   { code: 'SIN', city: 'Singapore', tag: 'Garden city' },
   { code: 'ROM', city: 'Rome', tag: 'Ancient and alive' },
   { code: 'SYD', city: 'Sydney', tag: 'Harbour light' },
+  { code: 'DPS', city: 'Bali', tag: 'Temples and surf' },
+  { code: 'HKT', city: 'Phuket', tag: 'Andaman beaches' },
+  { code: 'RIO', city: 'Rio de Janeiro', tag: 'Beaches and hills' },
+  { code: 'CPT', city: 'Cape Town', tag: 'Mountain and sea' },
+  { code: 'RAK', city: 'Marrakech', tag: 'Souks and riads' },
+  { code: 'CUN', city: 'Cancún', tag: 'Caribbean blue' },
+  { code: 'LIS', city: 'Lisbon', tag: 'Hills and tiles' },
+  { code: 'BCN', city: 'Barcelona', tag: 'Gaudí and the sea' },
+  { code: 'AMS', city: 'Amsterdam', tag: 'Canals by bike' },
+  { code: 'SFO', city: 'San Francisco', tag: 'Fog and bridges' },
+  { code: 'VCE', city: 'Venice', tag: 'A city on water' },
+  { code: 'ZRH', city: 'Zurich', tag: 'Lakes and Alps' },
+  { code: 'OSL', city: 'Oslo', tag: 'Fjord city' },
+  { code: 'REK', city: 'Reykjavík', tag: 'Northern lights' },
+  { code: 'YVR', city: 'Vancouver', tag: 'Mountains meet sea' },
 ];
 
 // ---------- Icons ----------

@@ -6,6 +6,7 @@ import { placeItems, placeOf } from './util.js';
 import { state, persist, go } from './state.js';
 import { createCalendar } from './calendar.js';
 import { logoHtml, detailsHtml } from './results.js';
+import { mountTripWeather, wxPill, CLIMATES, unitToggle, onUnit } from './weather.js';
 
 // ---------- Mode ----------
 export const isLux = () => store.get('nomad.mode', 'classic') === 'lux';
@@ -188,6 +189,7 @@ export function renderLuxHome(view) {
           </div>
           <div id="lx-legs" class="lux-legs"></div>
         </form>
+        <div class="wx-home" id="lx-wx" aria-live="polite"></div>
         <div class="search-card lux-card hidden" id="lux-concierge"></div>
       </div>
     </section>
@@ -234,6 +236,22 @@ export function renderLuxHome(view) {
     $('#lx-dates-sub', form).textContent = s.trip === 'multi' ? 'First flight' : s.trip === 'oneway' ? 'One way' : datesText(s).split(' · ')[1] || 'Add a return date';
     $('#lx-pax-main', form).textContent = paxText(s);
     $('#lx-pax-sub', form).textContent = CABINS[s.cabin].label;
+    paintWeather();
+  }
+
+  // Weather for the trip in the form, after the traveller stops typing.
+  var wxKey = ''; // var: paint() can run before this line
+  var wxTimer = null;
+  function paintWeather() {
+    const legs = legsOf(s);
+    const key = JSON.stringify([s.trip, legs.map((l) => [l.from && l.from.code, l.to && l.to.code, l.date])]);
+    if (key === wxKey) return;
+    wxKey = key;
+    clearTimeout(wxTimer);
+    wxTimer = setTimeout(() => {
+      const box = $('#lx-wx', view);
+      if (box) mountTripWeather(box, { trip: s.trip, from: s.from, to: s.to, depart: s.depart, ret: s.ret, legs }, { compact: true });
+    }, 350);
   }
 
   // Extra flights for multi-city. Each row: from, to, date.
@@ -408,6 +426,7 @@ export function renderLuxHome(view) {
       $$('[data-lmode]', view).forEach((b) => b.classList.toggle('on', b === m));
       const c = m.dataset.lmode === 'concierge';
       form.classList.toggle('hidden', c);
+      $('#lx-wx', view).classList.toggle('hidden', c);
       $('#lux-concierge', view).classList.toggle('hidden', !c);
       if (c && !conciergeMounted) {
         conciergeMounted = true;
@@ -444,6 +463,7 @@ function mountConcierge(box) {
       <textarea id="lx-ask" rows="2" maxlength="1500" placeholder="e.g. Ten days somewhere warm in February, from London, two of us. Nonstop if possible."></textarea>
       <button type="submit" class="btn btn-brass" id="lx-ask-go">Suggest trips</button>
     </form>
+    <div class="chips lx-climate" id="lx-climate" role="group" aria-label="Weather you want"><span class="small muted">Weather</span>${Object.entries(CLIMATES).map(([k, c]) => `<button type="button" class="chip" data-climate="${k}" title="${esc(c.hint || '')}">${esc(c.label)}</button>`).join('')}</div>
     <div id="lx-ideas"></div>`;
   api('GET', '/api/lux/status').then((st) => {
     if (st.concierge) return;
@@ -453,7 +473,20 @@ function mountConcierge(box) {
     $('#lx-ask-go', box).disabled = true;
   }).catch(() => {});
 
+  let climate = store.get('nomad.climate', 'any');
+  if (!CLIMATES[climate]) climate = 'any';
+  const paintClimate = () => $$('[data-climate]', box).forEach((b) => b.classList.toggle('on', b.dataset.climate === climate));
+  paintClimate();
+  $('#lx-climate', box).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-climate]');
+    if (!b) return;
+    climate = b.dataset.climate;
+    store.set('nomad.climate', climate);
+    paintClimate();
+  });
+
   const out = $('#lx-ideas', box);
+  onUnit(out, () => paint());
   const paint = () => {
     if (busy) {
       out.innerHTML = '<div class="ai-thinking"><span class="dot"></span><span class="dot"></span><span class="dot"></span> The concierge is thinking…</div>';
@@ -473,9 +506,11 @@ function mountConcierge(box) {
             <p class="small">${esc(i.why)}</p>
             ${i.highlights.length ? `<ul class="lux-hl">${i.highlights.map((h) => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
             <div class="small muted">${esc(fmtDay(i.depart, { day: 'numeric', month: 'short' }))}${i.ret ? ` – ${esc(fmtDay(i.ret, { day: 'numeric', month: 'short' }))}` : ' · one way'} · ${esc(CABINS[i.cabin].label)}</div>
+            ${i.weather ? `<div class="idea-wx">${wxPill(i.weather, i.city)}${i.fits === false && r.climate ? `<span class="tiny wx-miss">Not ${esc(r.climate)} on these dates</span>` : ''}</div>` : ''}
             <button type="button" class="btn btn-brass btn-sm" data-idea="${k}" ${r.from ? '' : 'disabled'}>See flights</button>
           </div>
         </article>`).join('')}</div>
+      ${r.ideas.some((i) => i.weather) ? `<div class="tiny muted wx-foot">Weather from Open-Meteo: forecast for close dates, else the average of the same dates in recent years. ${unitToggle()}</div>` : ''}
       ${r.ideas.length ? '<p class="tiny muted">Ideas from Claude, not bookings. Nomad books the flights. Hotels and plans on the ground are up to you.</p>' : ''}`;
   };
 
@@ -485,7 +520,7 @@ function mountConcierge(box) {
     busy = true;
     paint();
     try {
-      last = await api('POST', '/api/lux/ideas', { text: value, from: lux.from });
+      last = await api('POST', '/api/lux/ideas', { text: value, from: lux.from, climate: climate === 'any' ? null : climate });
     } catch (e) {
       toast(e.message, 'err');
     } finally {
@@ -577,6 +612,7 @@ export function renderLuxResults(view) {
         <p class="eyebrow" style="margin:0 0 6px">Nomad Lux · ${s.trip === 'return' ? 'Return' : s.trip === 'multi' ? 'Multi-city' : 'One way'}</p>
         <h1>${esc(title)}</h1>
         <div class="meta"><span>${esc(datesText(s))}</span><span class="dot">•</span><span>${esc(paxText(s))}</span><span class="dot">•</span><span>${esc(CABINS[s.cabin].label)}</span></div>
+        <div class="band-wx" id="band-wx"></div>
         <a href="#/lux" class="btn btn-ghost btn-sm edit">Edit search</a>
       </div>
     </section>
@@ -585,6 +621,8 @@ export function renderLuxResults(view) {
       <div class="lux-controls" id="lx-controls"></div>
       <div id="lx-list"><div class="loading"><div class="plane-loader"><div class="track"></div>${ICON.plane}</div>Searching Premium, Business and First…</div><div class="skeleton"></div><div class="skeleton"></div></div>
     </div>`;
+
+  mountTripWeather($('#band-wx', view), { trip: s.trip, from: s.from, to: s.to, depart: s.depart, ret: s.ret, legs }, { compact: true });
 
   const cached = store.get('nomad.lux.results', null);
   let data = cached && cached.key === key && Date.now() - cached.at < 20 * 60e3 ? cached.data : null;

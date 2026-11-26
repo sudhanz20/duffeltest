@@ -2,6 +2,7 @@
 import { $, $$, esc, api, toast, fmtDay, hhmm, dayDiff, dur, money, ICON, CABIN_LABEL, cityImg } from './util.js';
 import { state, persist, go, searchKey, paxCount, legsOf } from './state.js';
 import { paxLabel, datesLabel, routeLabel } from './search.js';
+import { mountTripWeather } from './weather.js';
 
 const SORTS = {
   recommended: { label: 'Recommended', hint: 'Best balance', fn: (a, b) => a.recommendScore - b.recommendScore },
@@ -158,6 +159,7 @@ export function renderResults(view) {
         <p class="eyebrow" style="margin:0 0 6px">${s.trip === 'return' ? 'Return trip' : s.trip === 'multi' ? `Multi-city · ${legs.length} flights` : 'One way'}</p>
         <h1>${esc(routeLabel(s))}</h1>
         <div class="meta"><span>${esc(d.main)}</span><span class="dot">•</span><span>${esc(p.main)}</span><span class="dot">•</span><span>${esc(p.sub)}</span></div>
+        <div class="band-wx" id="band-wx"></div>
         <a href="#/" class="btn btn-ghost btn-sm edit">Edit search</a>
       </div>
     </section>
@@ -170,6 +172,8 @@ export function renderResults(view) {
         <div id="list"><div class="loading"><div class="plane-loader"><div class="track"></div>${ICON.plane}</div>Searching airlines for the best flights…</div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
       </div>
     </div>`;
+
+  mountTripWeather($('#band-wx', view), s, { compact: true });
 
   // Reuse results for 20 minutes. After that Duffel offers start to expire.
   const fresh = state.results && state.results.key === key && Date.now() - (state.results.at || 0) < 20 * 60e3;

@@ -56,6 +56,7 @@ const PLAN_SCHEMA = obj({
     features: { type: 'array', items: { type: 'string', enum: FEATURES } },
     loyalty: { type: 'array', items: str },
   }),
+  climate: { type: 'string', enum: ['warm', 'mild', 'cool', 'any'] },
   assumptions: { type: 'array', items: obj({ field: str, text: str }) },
   questions: { type: 'array', items: str },
   alternatives: { type: 'array', items: str },
@@ -82,6 +83,8 @@ How to fill the fields:
 - prefs.loyalty: 2-letter airline codes whose frequent flyer programme the traveller wants to earn with, for example ["BA"] for Avios or Executive Club, ["AA"] for AAdvantage, ["LH"] for Miles & More, ["VS"] for Flying Club, ["AF"] for Flying Blue. Else empty.
 - Nomad cannot filter by meals, a specific Wi-Fi provider such as Starlink, lounges or alliances, because the airline data does not include them. If the traveller asks for one, add an assumption saying Nomad cannot check it, and use the closest filter (Wi-Fi for Starlink).
 
+- climate: "warm" when the traveller asks for somewhere warm, hot, sunny or a beach, "cool" when they want to escape the heat or want cold, snow or crisp weather, "mild" for neither hot nor cold, else "any". Nomad checks the destination and the alternatives against real weather data for the dates, so pick places that usually fit in that season.
+
 Every guess you make goes in assumptions, as one short plain sentence naming the field. Put a question in "questions" only when a search cannot run without the answer. Keep questions short.
 summary is one plain sentence that describes the search, for example "Return flights from London to Lisbon, 12 to 19 April, 2 adults, economy."
 
@@ -94,10 +97,11 @@ function getClient() {
   return client;
 }
 
+const { feelOf, fits } = require('./weather');
 const isDate = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
 const clampInt = (n, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(n) || 0)));
 
-function registerAi(app, { duffel, broadcast, route, fail }) {
+function registerAi(app, { duffel, broadcast, route, fail, weatherFor }) {
   app.get('/api/ai/status', (req, res) => res.json({ enabled: Boolean(process.env.ANTHROPIC_API_KEY), model: MODEL }));
 
   // Find the place Nomad should search for. Returns the same shape the search form uses.
@@ -204,17 +208,49 @@ function registerAi(app, { duffel, broadcast, route, fail }) {
       };
       if (from && to && from.code === to.code) questions.push('From and To are the same place. Where are you flying from?');
 
+      const alternatives = (raw.alternatives || []).slice(0, 5);
+      const assumptions = raw.assumptions || [];
+      const climate = ['warm', 'mild', 'cool'].includes(raw.climate) ? raw.climate : null;
+      const weather = to && depart ? await checkWeather({ from, to, depart, ret, climate, alternatives, assumptions }) : null;
+
       return {
         summary: raw.summary,
         search,
-        assumptions: raw.assumptions || [],
+        assumptions,
         questions: [...new Set(questions)],
-        alternatives: (raw.alternatives || []).slice(0, 5),
+        alternatives,
+        climate,
+        weather,
         ready: Boolean(from && to && depart && (trip === 'oneway' || ret) && !(from.code === to.code)),
         raw,
       };
     })
   );
+
+  // Real weather for the trip dates: origin on departure day, destination over the stay.
+  // When the traveller asked for a climate, check the destination and alternatives against it.
+  async function checkWeather({ from, to, depart, ret, climate, alternatives, assumptions }) {
+    try {
+      const [origin] = from ? await weatherFor([{ code: from.code, name: from.name }], depart, depart) : [null];
+      const alts = alternatives.map((name, i) => ({ code: `ALT${i}`, name }));
+      const stay = await weatherFor([{ code: to.code, name: to.name }, ...(climate ? alts : [])], depart, ret || depart);
+      const dest = stay[0];
+      const altWeather = climate
+        ? stay.slice(1).map((w, i) => (w.error ? { name: alternatives[i] } : { name: alternatives[i], highC: w.highC, lowC: w.lowC, kind: w.kind, fits: fits(climate, w.highC) }))
+        : [];
+      if (climate && dest && !dest.error && !fits(climate, dest.highC)) {
+        const better = altWeather.filter((a) => a.fits).map((a) => a.name);
+        const when = dest.kind === 'forecast' ? 'is forecast at' : 'is usually';
+        assumptions.push({
+          field: 'weather',
+          text: `Weather check: ${to.name} ${when} about ${Math.round(dest.highC)}°C by day on these dates, which is ${feelOf(dest.highC)}, not ${climate}.${better.length ? ` ${better.join(' or ')} ${better.length > 1 ? 'fit' : 'fits'} better.` : ''}`,
+        });
+      }
+      return { origin: origin && !origin.error ? origin : null, destination: dest && !dest.error ? dest : null, alternatives: altWeather };
+    } catch {
+      return null; // Weather is a nice-to-have. A failure never blocks the search.
+    }
+  }
 
   // Multi-city: every flight needs a place it can find, a date after today, and dates in order.
   async function planMulti(raw, place, today) {
