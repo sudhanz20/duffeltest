@@ -18,16 +18,17 @@ const classicHome = (view) => {
 const results = (view) => (isLux() ? renderLuxResults(view) : renderResults(view));
 const HERO = [classicHome, renderLuxHome];
 
+// [pattern, page, nav item, route name for Vercel Web Analytics]
 const routes = [
-  [/^#?\/?$/, classicHome, 'home'],
-  [/^#\/lux$/, renderLuxHome, 'lux'],
-  [/^#\/lux\/results$/, renderLuxResults, 'lux'],
-  [/^#\/results$/, results, 'home'],
-  [/^#\/checkout$/, renderTravellers, 'home'],
-  [/^#\/payment$/, renderPayment, 'home'],
-  [/^#\/confirmation$/, renderConfirmation, 'trips'],
-  [/^#\/trips$/, renderTrips, 'trips'],
-  [/^#\/trip\/([\w]+)$/, renderManage, 'trips'],
+  [/^#?\/?$/, classicHome, 'home', '/'],
+  [/^#\/lux$/, renderLuxHome, 'lux', '/lux'],
+  [/^#\/lux\/results$/, renderLuxResults, 'lux', '/lux/results'],
+  [/^#\/results$/, results, 'home', '/results'],
+  [/^#\/checkout$/, renderTravellers, 'home', '/checkout'],
+  [/^#\/payment$/, renderPayment, 'home', '/payment'],
+  [/^#\/confirmation$/, renderConfirmation, 'trips', '/confirmation'],
+  [/^#\/trips$/, renderTrips, 'trips', '/trips'],
+  [/^#\/trip\/([\w]+)$/, renderManage, 'trips', '/trip/[id]'],
 ];
 
 let cleanup = null;
@@ -39,7 +40,7 @@ function route() {
   old.replaceWith(view);
   if (typeof cleanup === 'function') cleanup();
   cleanup = null;
-  for (const [re, fn, nav] of routes) {
+  for (const [re, fn, nav, name] of routes) {
     const m = hash.match(re);
     if (m) {
       $$('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav && hash !== '#/' && hash !== ''));
@@ -49,6 +50,8 @@ function route() {
       window.scrollTo(0, 0);
       cleanup = fn(view, ...m.slice(1));
       paintMode();
+      // Booking ids stay out of analytics: every Manage booking page reports as /trip/[id].
+      if (window.va) window.va('pageview', { route: name, path: name });
       return;
     }
   }
