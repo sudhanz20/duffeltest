@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const { registerAi } = require('./ai');
+const metrics = require('./metrics');
 
 const PORT = Number(process.env.PORT) || 3000;
 const API_KEY = process.env.DUFFEL_API_KEY || '';
@@ -105,6 +106,7 @@ app.post('/webhook', express.raw({ type: '*/*', limit: '2mb' }), (req, res) => {
   const duplicate = body.idempotency_key ? seenKeys.has(body.idempotency_key) : false;
   if (check.ok && body.idempotency_key) seenKeys.add(body.idempotency_key);
   broadcast('webhook', { type: body.type || '(no type)', verified: check.ok, reason: check.reason, duplicate, body });
+  metrics.webhook({ type: body.type, verified: check.ok, duplicate });
   console.log(`[webhook] ${body.type} verified=${check.ok}${check.reason ? ` (${check.reason})` : ''}`);
   if (!check.ok) return res.status(401).json({ error: check.reason });
   res.status(200).json({ received: true });
@@ -123,17 +125,26 @@ async function duffel(method, urlPath, data) {
     throw err;
   }
   const started = Date.now();
-  const res = await fetch(DUFFEL + urlPath, {
-    method,
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-      'Duffel-Version': 'v2',
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: data === undefined ? undefined : JSON.stringify({ data }),
-  });
-  const text = await res.text();
+  let res;
+  let text;
+  try {
+    res = await fetch(DUFFEL + urlPath, {
+      method,
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        'Duffel-Version': 'v2',
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: data === undefined ? undefined : JSON.stringify({ data }),
+    });
+    text = await res.text();
+  } catch (e) {
+    // Duffel could not be reached at all (network error or timeout).
+    metrics.duffelCall(method, urlPath, 0, Date.now() - started);
+    throw Object.assign(new Error(`Could not reach Duffel: ${e.message}`), { status: 502 });
+  }
+  metrics.duffelCall(method, urlPath, res.status, Date.now() - started);
   let json;
   try {
     json = text ? JSON.parse(text) : {};
@@ -447,6 +458,9 @@ app.post(
       note = 'Mixed cabins are sold as two one-way tickets. Each has its own booking reference and rules.';
     }
     offers = score(offers);
+    const route = `${legs[0].origin}-${legs[0].destination}`.toUpperCase();
+    const airlines = new Set(offers.flatMap((o) => String(o.owner.code || '').split('+'))).size;
+    metrics.search({ route, offers: offers.length, airlines });
     return { matching: offers.length, note, offers: topOffers(offers) };
   })
 );
@@ -557,13 +571,13 @@ async function bookOffer(offerId, travellers, payLater) {
   // Whatever method the traveller picks on the page, the test booking is paid from the Duffel balance.
   if (!hold) data.payments = [{ type: 'balance', currency: offer.total_currency, amount: offer.total_amount }];
   const out = await duffel('POST', '/air/orders', data);
-  return { order: slimOrder(out.data), held: hold };
+  return { order: slimOrder(out.data), held: hold, offerTotal: Number(offer.total_amount) };
 }
 
 app.post(
   '/api/orders',
   route(async (req) => {
-    const { offerId, travellers, payLater } = req.body || {};
+    const { offerId, travellers, payLater, shownTotal } = req.body || {};
     if (!offerId || !Array.isArray(travellers)) throw fail(400, 'Missing offer or traveller details.');
     const parts = String(offerId).split('+');
     const results = [];
@@ -571,6 +585,10 @@ app.post(
       try {
         results.push(await bookOffer(part, travellers, payLater));
       } catch (e) {
+        if (e.status !== 400 || e.duffel) {
+          const codes = ((e.duffel && e.duffel.errors) || []).map((x) => `${x.code} ${x.title} ${x.message}`).join(' ');
+          metrics.booking({ ok: false, expired: /expired|no longer available|not available/i.test(`${codes} ${e.message}`) });
+        }
         // Two-ticket trip: if the second ticket fails, cancel the first so nothing is left half-booked.
         for (const r of results) {
           try {
@@ -584,6 +602,15 @@ app.post(
         throw e;
       }
     }
+    const finalTotal = results.reduce((t, r) => t + r.offerTotal, 0);
+    const shown = Number(shownTotal);
+    metrics.booking({
+      ok: true,
+      held: results.some((r) => r.held),
+      priceChanged: Number.isFinite(shown) && shown > 0 && Math.abs(finalTotal - shown) >= 0.01,
+      value: finalTotal,
+      currency: results[0] && results[0].order.currency,
+    });
     return { orders: results.map((r) => r.order), held: results.some((r) => r.held) };
   })
 );
@@ -626,6 +653,7 @@ app.post(
       order_id: o.id,
       payment: { type: 'balance', amount: o.total_amount, currency: o.total_currency },
     });
+    metrics.heldPaid();
     return { order: slimOrder((await duffel('GET', `/air/orders/${encodeURIComponent(o.id)}`)).data) };
   })
 );
@@ -703,6 +731,7 @@ app.post(
   '/api/cancellations/:id/confirm',
   route(async (req) => {
     const c = (await duffel('POST', `/air/order_cancellations/${encodeURIComponent(req.params.id)}/actions/confirm`)).data;
+    metrics.cancellation({ refund: Number(c.refund_amount) || 0, currency: c.refund_currency });
     return { confirmedAt: c.confirmed_at, refundAmount: c.refund_amount, refundCurrency: c.refund_currency };
   })
 );
@@ -767,6 +796,18 @@ app.post(
 app.delete(
   '/api/webhooks/:id',
   route(async (req) => duffel('DELETE', `/air/webhooks/${encodeURIComponent(req.params.id)}`))
+);
+
+// ---------------------------------------------------------------------------
+// Supplier KPIs: daily trends of how Duffel performs for Nomad (see metrics.js)
+// ---------------------------------------------------------------------------
+app.get(
+  '/api/kpis',
+  route(async (req) => {
+    const days = Math.min(400, Math.max(1, parseInt(req.query.days, 10) || 30));
+    const mode = req.query.mode === 'live' || req.query.mode === 'test' ? req.query.mode : metrics.MODE;
+    return metrics.trends(days, mode);
+  })
 );
 
 module.exports = app; // Vercel imports the app

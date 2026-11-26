@@ -56,6 +56,20 @@ Open **http://localhost:3000**.
    - `ANTHROPIC_MODEL` (optional): the Claude model for Ask Nomad. Default `claude-haiku-5-5`.
 3. Deploy and open the URL. Any username works with the password.
 
+## Duffel supplier KPIs
+
+Nomad can record how Duffel performs for it: search time, error rate, order success, searches per booking (Duffel charges above 1,500), expired offers, price changes at booking, offers per route, held orders paid, cancellations and refunds, airline schedule changes and webhooks.
+
+It stores daily totals in Redis and keeps them for about 400 days. Test and live traffic are stored apart. Recording never slows or breaks a booking.
+
+To turn it on:
+
+1. In Vercel, open the project, then **Storage → Create → Upstash for Redis** (the free plan is enough) and connect it to this project. This sets `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
+2. Redeploy.
+3. Open **Developer → Supplier KPIs**, or go to `/kpis.html`. The JSON is at `/api/kpis?days=30&mode=test`.
+
+Locally, set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` in `.env`. Without them, nothing is recorded.
+
 ## Webhooks
 
 Open **Developer → Webhooks**.
@@ -72,9 +86,10 @@ The server checks `X-Duffel-Signature` (HMAC-SHA256 over `<timestamp>.<raw body>
 ## Files
 
 - `ai.js`: Ask Nomad. Sends the request to Claude, checks the answer, and looks up the airports.
+- `metrics.js`: Duffel supplier KPIs. Records daily totals in Redis and reads the trends back.
 - `server.js`: Express server. Duffel calls, search scoring, bookings, changes, cancellations, webhooks, live feed.
 - `public/index.html`: page shell.
 - `public/css/nomad.css`: the Nomad design.
-- `public/js/`: `search.js` (home and search form), `ai.js` (Ask Nomad), `calendar.js`, `results.js`, `checkout.js`, `trips.js` (My bookings and Manage booking), `dev.js`, `state.js`, `util.js`.
+- `public/js/`: `search.js` (home and search form), `ai.js` (Ask Nomad), `calendar.js`, `results.js`, `checkout.js`, `trips.js` (My bookings and Manage booking), `kpis.js` (Supplier KPIs page), `dev.js`, `state.js`, `util.js`.
 
 Photos come from Unsplash. Airline logos come from Duffel.
