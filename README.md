@@ -14,6 +14,8 @@ A flight search and booking app built on the Duffel API. It runs in Duffel test 
 - **Not available:** meals, Starlink or other Wi‑Fi providers, lounges and alliances. Duffel offers do not include this data.
 - **Ask Nomad.** Describe a trip in plain words. Claude fills in the search, flags every guess, and asks about anything missing. You correct it in words or in the form, then search.
 - **Nomad Lux.** A mode for travellers who put comfort and time before price (Lux in the nav, or `#/lux`). It searches Premium economy, Business and First only, in parallel, and hides any trip with an Economy flight in it. It ranks by journey time, stops, cabin, flat beds on long flights, sensible departure and arrival hours, connection length and flexibility. Price only breaks ties. Each flight shows why it ranks where it does, and any drawback. Return, one way and multi-city (up to 6 flights). The Lux concierge (Claude) suggests destinations and dates for a trip you describe, then runs a Lux search for the one you pick. Lux cannot rank on lounges, meals or chauffeurs, because airline data does not include them, and Nomad books flights only, not hotels.
+- **Weather.** The home page, results, Lux and Ask Nomad show the temperature where you leave from and where you are going, for your dates, in °C or °F (one tap to switch; Nomad remembers it). Dates within 16 days get the live forecast. Later dates get the typical weather: the average of the same dates in each of the last 5 years. Every temperature says which one it is.
+- **Warm, mild or cool trips.** On the home page, pick Warm (highs of 22°C / 72°F or more), Mild (15 to 22°C) or Cool (under 15°C). Nomad shows the destinations that fit your dates, warmest or coolest first. The Lux concierge has the same choice, and Ask Nomad understands "somewhere warm". Both check their suggestions against real weather data and say when a place does not fit.
 - **Recent searches.** Saved in your browser and shown on the home page.
 - **Checkout.** Traveller details with passport-name and age checks, then a payment page.
 - **Payment methods.** Card, Apple Pay, Google Pay, PayPal, Pay later and Agency balance.
@@ -29,6 +31,7 @@ A flight search and booking app built on the Duffel API. It runs in Duffel test 
 | Card, Apple Pay, Google Pay, PayPal | Simulated. Every method settles from your Duffel test balance. |
 | Name corrections | Simulated. Duffel's API cannot rename a passenger; airlines do it by hand. Nomad stores the request in your browser. |
 | Ask Nomad | Real Claude API call. Uses `claude-haiku-5-5`, the cheapest model, unless you set `ANTHROPIC_MODEL`. Needs `ANTHROPIC_API_KEY`. Without it the tab shows a notice and the classic search still works. |
+| Weather | Real data from [Open-Meteo](https://open-meteo.com): the forecast API, and the historical weather archive for typical weather. Free, no key. Open-Meteo's free tier is for non-commercial use; for a commercial launch, buy an API key and set `OPEN_METEO_API_KEY`. |
 | Mixed cabins (for example Business out, Economy back) | Real, but sold as two one-way tickets with two booking references. Airlines rarely sell this as one ticket. If the second ticket fails, Nomad cancels the first. |
 
 Book **Duffel Airways** flights in test mode. They book, change and cancel reliably. Other airlines can fail in test mode.
@@ -55,6 +58,7 @@ Open **http://localhost:3000**.
    - `PLAYGROUND_PASSWORD`: any password. Without it, anyone with the URL can book on your Duffel account.
    - `ANTHROPIC_API_KEY` (optional): turns on Ask Nomad. Each request is one Claude call.
    - `ANTHROPIC_MODEL` (optional): the Claude model for Ask Nomad. Default `claude-haiku-5-5`.
+   - `OPEN_METEO_API_KEY` (optional): only for commercial use of the weather data. Without it, Nomad uses Open-Meteo's free service.
 3. Deploy and open the URL. Any username works with the password.
 
 ## Duffel supplier KPIs

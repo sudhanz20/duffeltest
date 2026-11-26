@@ -109,6 +109,7 @@ const IDEAS_SCHEMA = obj({
   intro: str,
   origin: obj({ query: nullable(str), iata: nullable(str) }),
   adults: { type: 'integer' },
+  climate: { type: 'string', enum: ['warm', 'mild', 'cool', 'any'] },
   questions: { type: 'array', items: str },
   ideas: {
     type: 'array',
@@ -139,6 +140,7 @@ Rules:
 - cabin is "best" unless the traveller asks for a specific class.
 - origin: the city they fly from. If they do not say, set both fields null and add a question asking where they fly from. adults defaults to 2 for "we" or "us", else 1.
 - intro is one short sentence. Plain words, no exclamation marks, no flattery.
+- climate: "warm" when the traveller wants sun, heat or a beach, "cool" when they want to escape the heat, snow or crisp air, "mild" for neither hot nor cold, else "any". When a climate is set, suggest 5 places, not 3 or 4: Nomad checks each one against real weather data and keeps the best fits.
 - Put a question in "questions" only when you cannot suggest anything without the answer.`;
 
 let client = null;
@@ -147,9 +149,12 @@ function getClient() {
   if (!client) client = new Anthropic();
   return client;
 }
+const { feelOf, fits } = require('./weather');
+const CLIMATES = ['warm', 'mild', 'cool'];
+const CLIMATE_WORDS = { warm: 'a warm trip: daytime highs of 22°C or more', mild: 'a mild trip: daytime highs of about 15 to 22°C', cool: 'a cool trip: daytime highs under 15°C' };
 const isDate = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
 
-function registerLux(app, { duffel, broadcast, route, fail, searchOnce, dedupe, buildPassengers }) {
+function registerLux(app, { duffel, broadcast, route, fail, searchOnce, dedupe, buildPassengers, weatherFor }) {
   // body: { legs: [{ origin, destination, date }], passengers, cabin: 'best'|'premium_economy'|'business'|'first' }
   app.post(
     '/api/lux/search',
@@ -202,7 +207,8 @@ function registerLux(app, { duffel, broadcast, route, fail, searchOnce, dedupe, 
       if (!text) throw fail(400, 'Tell the concierge what kind of trip you want.');
       const from = req.body && req.body.from && req.body.from.code ? req.body.from : null;
       const today = new Date().toISOString().slice(0, 10);
-      const content = `Today is ${today}.${from ? ` The traveller usually flies from ${from.name} (${from.code}) unless they say otherwise.` : ''}\n\n${text}`;
+      const asked = CLIMATES.includes(req.body && req.body.climate) ? req.body.climate : null;
+      const content = `Today is ${today}.${from ? ` The traveller usually flies from ${from.name} (${from.code}) unless they say otherwise.` : ''}${asked ? ` The traveller wants ${CLIMATE_WORDS[asked]}.` : ''}\n\n${text}`;
 
       const started = Date.now();
       let response;
@@ -233,12 +239,13 @@ function registerLux(app, { duffel, broadcast, route, fail, searchOnce, dedupe, 
       const origin = raw.origin && (raw.origin.iata || raw.origin.query);
       const [fromPlace, ...toPlaces] = await Promise.all([
         origin ? resolvePlace(raw.origin.iata || raw.origin.query) : Promise.resolve(from),
-        ...(raw.ideas || []).slice(0, 4).map((i) => resolvePlace(i.iata || i.city)),
+        ...(raw.ideas || []).slice(0, 6).map((i) => resolvePlace(i.iata || i.city)),
       ]);
       const questions = [...(raw.questions || [])];
       if (!fromPlace && !questions.length) questions.push('Where do you fly from?');
-      const ideas = (raw.ideas || [])
-        .slice(0, 4)
+      const climate = asked || (CLIMATES.includes(raw.climate) ? raw.climate : null);
+      let ideas = (raw.ideas || [])
+        .slice(0, 6)
         .map((i, k) => {
           const depart = isDate(i.depart) && i.depart > today ? i.depart : null;
           const ret = isDate(i.ret) && depart && i.ret > depart ? i.ret : null;
@@ -255,7 +262,21 @@ function registerLux(app, { duffel, broadcast, route, fail, searchOnce, dedupe, 
           };
         })
         .filter((i) => i.to && i.depart && (!fromPlace || i.to.code !== fromPlace.code));
+
+      // Check each idea against real weather for its dates. Ideas that fit the wished-for climate come first.
+      ideas = await Promise.all(
+        ideas.map(async (i) => {
+          const w = await weatherFor([{ code: i.to.code, name: i.city }], i.depart, i.ret || i.depart).then((r) => r[0]).catch(() => null);
+          const weather = w && !w.error ? w : null;
+          return { ...i, weather, feel: weather ? feelOf(weather.highC) : null, fits: weather ? fits(climate, weather.highC) : null };
+        })
+      );
+      const hi = (i) => (i.weather ? i.weather.highC : null);
+      const score = (i) => (hi(i) == null ? 99 : climate === 'warm' ? -hi(i) : climate === 'cool' ? hi(i) : Math.abs(hi(i) - 18.5));
+      if (climate) ideas.sort((a, b) => (b.fits === true) - (a.fits === true) || score(a) - score(b));
+      ideas = ideas.slice(0, 4);
       return {
+        climate,
         intro: raw.intro,
         from: fromPlace,
         adults: Math.max(1, Math.min(9, Math.round(Number(raw.adults) || 1))),

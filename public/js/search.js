@@ -1,9 +1,10 @@
 // Home page: hero, search form, recent searches and destinations.
 import { $, $$, esc, api, toast, fmtDay, ymd, addDays, today, ICON, CABIN_LABEL, img, cityImg, DESTINATIONS, store } from './util.js';
-import { placeItems, placeOf } from './util.js';
+import { placeItems, placeOf, parseYmd } from './util.js';
 import { state, persist, go, recentSearches, addRecent, clearRecent, paxCount, legsOf, syncMulti, startMulti, MAX_LEGS } from './state.js';
 import { createCalendar } from './calendar.js';
 import { mountAi } from './ai.js';
+import { mountTripWeather, getWeather, hiLo, feelOf, fits, CLIMATES, unitToggle, onUnit, sourceText } from './weather.js';
 
 const AIRLINES = [
   ['BA', 'British Airways Executive Club'],
@@ -88,6 +89,7 @@ export function renderHome(view) {
             <button type="submit" class="btn btn-brass search-btn">Search</button>
           </div>
         </form>
+        <div class="wx-home" id="wx-home" aria-live="polite"></div>
       </div>
     </section>
 
@@ -99,9 +101,11 @@ export function renderHome(view) {
 
       <section class="section">
         <div class="section-head"><div><p class="eyebrow" style="margin:0 0 6px">Inspiration</p><h2>Where to next?</h2></div></div>
-        <div class="dests">
-          ${DESTINATIONS.map((d) => `<button type="button" class="dest" data-dest="${d.code}" data-city="${esc(d.city)}"><img loading="lazy" src="${cityImg(d.code, 900)}" alt="" /><div><b>${esc(d.city)}</b><span>${esc(d.tag)}</span></div></button>`).join('')}
+        <div class="climate-bar">
+          <div class="chips" id="climate" role="group" aria-label="Trip weather">${Object.entries(CLIMATES).map(([k, c]) => `<button type="button" class="chip" data-climate="${k}" title="${esc(c.hint || '')}">${esc(c.label)}</button>`).join('')}</div>
+          <span class="small muted" id="climate-note"></span>
         </div>
+        <div class="dests" id="dests"></div>
       </section>
 
       <section class="values">
@@ -145,6 +149,7 @@ export function renderHome(view) {
     const p = paxLabel(s);
     $('#pax-main', form).textContent = p.main;
     $('#pax-sub', form).textContent = p.sub;
+    paintTripWeather();
   }
 
   // ---------- Trip type ----------
@@ -496,6 +501,7 @@ export function renderHome(view) {
     $$('[data-mode]', view).forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
     $('#ai', view).classList.toggle('hidden', mode !== 'ai');
     form.classList.toggle('hidden', mode === 'ai');
+    $('#wx-home', view).classList.toggle('hidden', mode === 'ai');
     if (mode === 'ai') $('#ai-text', view)?.focus();
   }
   $$('[data-mode]', view).forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
@@ -547,17 +553,100 @@ export function renderHome(view) {
     paintRecent();
   });
 
-  // ---------- Destinations ----------
-  $$('[data-dest]', view).forEach((b) =>
-    b.addEventListener('click', () => {
-      s.to = { code: b.dataset.dest, name: b.dataset.city, sub: 'All airports', type: 'city' };
-      if (s.from && s.from.code === s.to.code) s.from = null;
-      persist('search');
-      paint();
-      $('#search', view).scrollIntoView({ behavior: 'smooth', block: 'center' });
-      if (!s.from) $('[data-place=from]', form).focus();
-    })
-  );
+  // ---------- Destinations, with the weather on your dates ----------
+  // Warm, mild or cool picks destinations by their typical daytime high on the dates in the form.
+  let climate = store.get('nomad.climate', 'any');
+  if (!CLIMATES[climate]) climate = 'any';
+  let destWx = null; // Map of code -> weather for destWindow, or null while loading
+  let destWindow = '';
+  const stayOf = () => {
+    const from = s.trip === 'multi' ? (s.legs && s.legs[0] && s.legs[0].date) || s.depart : s.depart;
+    const to = s.trip === 'return' && s.ret ? s.ret : from ? ymd(addDays(parseYmd(from), 6)) : null;
+    return { from, to };
+  };
+  function paintDests() {
+    $$('[data-climate]', view).forEach((b) => b.classList.toggle('on', b.dataset.climate === climate));
+    const home = s.from && s.from.code;
+    let list = DESTINATIONS.filter((d) => d.code !== home).map((d) => ({ ...d, w: destWx && destWx.get(d.code) }));
+    const { from, to } = stayOf();
+    const note = $('#climate-note', view);
+    const withWx = list.find((d) => d.w);
+    if (withWx) {
+      note.innerHTML = `${withWx.w.kind === 'forecast' ? 'Forecast' : 'Typical'} highs and lows, ${esc(fmtDay(from, { day: 'numeric', month: 'short' }))} – ${esc(fmtDay(to, { day: 'numeric', month: 'short' }))} ${unitToggle()}`;
+      note.title = sourceText(withWx.w);
+      if (climate !== 'any') {
+        list = list.filter((d) => d.w && fits(climate, d.w.highC));
+        const score = (d) => (climate === 'warm' ? -d.w.highC : climate === 'cool' ? d.w.highC : Math.abs(d.w.highC - 18.5));
+        list.sort((a, b) => score(a) - score(b));
+      }
+    } else {
+      note.textContent = destWx ? 'Weather is not available right now.' : from ? 'Checking the weather for your dates…' : '';
+      note.title = '';
+    }
+    $('#dests', view).innerHTML = list.length
+      ? list
+          .slice(0, 8)
+          .map(
+            (d) => `<button type="button" class="dest" data-dest="${d.code}" data-city="${esc(d.city)}"><img loading="lazy" src="${cityImg(d.code, 900)}" alt="" />
+              ${d.w ? `<span class="dest-wx feel-${feelOf(d.w.highC)}" title="${esc(sourceText(d.w))}">${hiLo(d.w)}</span>` : ''}
+              <div><b>${esc(d.city)}</b><span>${esc(d.tag)}</span></div></button>`
+          )
+          .join('')
+      : `<div class="empty dests-empty"><h3>No ${esc(CLIMATES[climate].label.toLowerCase())} places on these dates</h3><p>None of Nomad’s ideas have ${esc(CLIMATES[climate].hint.toLowerCase())} then. Try other dates or another kind of weather.</p></div>`;
+  }
+  function loadDestWeather() {
+    const { from, to } = stayOf();
+    const key = `${from}|${to}`;
+    if (!from || key === destWindow) return paintDests();
+    destWindow = key;
+    destWx = null;
+    paintDests();
+    getWeather(DESTINATIONS.map((d) => d.code), from, to)
+      .catch(() => new Map())
+      .then((m) => {
+        if (destWindow !== key) return;
+        destWx = m;
+        paintDests();
+      });
+  }
+  $('#climate', view).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-climate]');
+    if (!b) return;
+    climate = b.dataset.climate;
+    store.set('nomad.climate', climate);
+    paintDests();
+  });
+  onUnit($('#dests', view), paintDests);
+  $('#dests', view).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dest]');
+    if (!b) return;
+    s.to = { code: b.dataset.dest, name: b.dataset.city, sub: 'All airports', type: 'city' };
+    if (s.from && s.from.code === s.to.code) s.from = null;
+    if (s.trip === 'multi') {
+      // A destination card plans a simple return trip from the first flight's origin.
+      s.trip = 'return';
+      if (!s.ret || s.ret <= s.depart) s.ret = ymd(addDays(new Date(s.depart), 7));
+    }
+    persist('search');
+    paint();
+    $('#search', view).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!s.from) $('[data-place=from]', form).focus();
+  });
+
+  // ---------- Weather for the trip in the form ----------
+  var wxKey = ''; // var: paint() can run before this line
+  var wxTimer = null;
+  function paintTripWeather() {
+    const key = JSON.stringify([s.trip, legsOf(s).map((l) => [l.from && l.from.code, l.to && l.to.code, l.date])]);
+    if (key === wxKey) return;
+    wxKey = key;
+    clearTimeout(wxTimer);
+    wxTimer = setTimeout(() => {
+      if (!$('#wx-home', view)) return;
+      mountTripWeather($('#wx-home', view), s, { compact: true });
+      loadDestWeather();
+    }, 350);
+  }
 
   if (s.trip === 'multi') renderLegs();
   if (s.depart && s.depart < ymd(today())) {

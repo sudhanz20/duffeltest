@@ -2,6 +2,7 @@
 // The traveller writes a request, checks what Nomad understood, corrects it, then searches.
 import { $, esc, api, toast, fmtDay, CABIN_LABEL, ICON, money } from './util.js';
 import { paxCount } from './state.js';
+import { hiLo, temp, feelOf, kindLabel, sourceText, unitToggle, onUnit } from './weather.js';
 
 const EXAMPLES = [
   'London to New York, 3 to 10 March, 2 adults, business class',
@@ -68,6 +69,18 @@ function flightsCell(legs, flag) {
     <ol>${legs.map((l) => `<li>${part(l.from)} → ${part(l.to)} <span class="when">${l.date ? esc(fmtDay(l.date, { weekday: 'short', day: 'numeric', month: 'short' })) : '<b class="need">Date needed</b>'}</span></li>`).join('')}</ol></div>`;
 }
 
+// Real weather for the dates, checked by the server (Open-Meteo).
+function weatherCell(wx, s) {
+  if (!wx || (!wx.origin && !wx.destination)) return '';
+  const one = (w, name) => `<span title="${esc(sourceText(w))}"><b>${esc(name)}</b> ${hiLo(w)} <span class="muted">${esc(feelOf(w.highC))} · ${esc(kindLabel(w))}</span></span>`;
+  const parts = [wx.origin && s.from && one(wx.origin, s.from.name), wx.destination && s.to && one(wx.destination, s.to.name)].filter(Boolean);
+  return `<div class="ai-cell ai-wx"><span class="label">Weather ${unitToggle()}</span><span class="value">${parts.join('<br>')}</span></div>`;
+}
+function altLabel(name, wx) {
+  const w = wx && (wx.alternatives || []).find((a) => a.name === name && a.highC != null);
+  return w ? `${esc(name)} <span class="muted">${temp(w.highC)}</span>` : esc(name);
+}
+
 function cell(label, value, flag) {
   return `<div class="ai-cell ${flag ? 'guess' : ''} ${value ? '' : 'missing'}">
     <span class="label">${label}${flag ? ' <em>guessed</em>' : ''}</span>
@@ -99,6 +112,7 @@ export function mountAi(box, { onUseForm, onSearch }) {
     $('#ai-go', box).disabled = true;
   });
 
+  onUnit(box, () => paintPlan());
   function paintPlan() {
     const last = st.turns[st.turns.length - 1];
     const plan = last && last.plan;
@@ -119,14 +133,15 @@ export function mountAi(box, { onUseForm, onSearch }) {
           ${s.trip === 'multi' ? flightsCell(s.legs, guessed(plan, 'flight', 'origin', 'destination', 'date', 'leg')) : `
           ${cell('From', s.from && `${s.from.name} (${s.from.code})`, guessed(plan, 'origin', 'from'))}
           ${cell('To', s.to && `${s.to.name} (${s.to.code})`, guessed(plan, 'destination', 'to'))}
-          ${cell('Dates', dates, guessed(plan, 'date', 'depart', 'ret'))}`}
+          ${cell('Dates', dates, guessed(plan, 'date', 'depart', 'ret'))}
+          ${weatherCell(plan.weather, s)}`}
           ${cell('Travellers', travellersText(s), guessed(plan, 'adult', 'child', 'infant', 'traveller', 'passenger'))}
           ${cell('Cabin', cabin, guessed(plan, 'cabin', 'class'))}
           ${cell('Preferences', prefsText(s.prefs, s), guessed(plan, 'sort', 'pref', 'price', 'budget', 'direct', 'time', 'bag', 'wifi', 'loyalty', 'meal', 'starlink'))}
         </div>
         ${plan.questions.length ? `<div class="ai-q"><b>Nomad needs to know</b><ul>${plan.questions.map((q) => `<li>${esc(q)}</li>`).join('')}</ul></div>` : ''}
         ${plan.assumptions.length ? `<div class="ai-a"><b>Nomad guessed</b><ul>${plan.assumptions.map((a) => `<li>${esc(a.text)}</li>`).join('')}</ul><div class="tiny muted">Correct anything below, or search if it looks right.</div></div>` : ''}
-        ${plan.alternatives.length ? `<div class="ai-alts"><span class="small muted">Or go to</span> ${plan.alternatives.map((a) => `<button type="button" class="ai-chip" data-alt="${esc(a)}">${esc(a)}</button>`).join('')}</div>` : ''}
+        ${plan.alternatives.length ? `<div class="ai-alts"><span class="small muted">Or go to</span> ${plan.alternatives.map((a) => `<button type="button" class="ai-chip" data-alt="${esc(a)}">${altLabel(a, plan.weather)}</button>`).join('')}</div>` : ''}
         <form id="ai-refine" class="ai-input ai-refine" autocomplete="off">
           <input id="ai-fix" class="input" maxlength="600" placeholder="${plan.questions.length ? 'Answer here, e.g. from Manchester, back on the 19th' : 'Change anything, e.g. make it 3 adults, or fly back a day later'}" />
           <button type="submit" class="btn btn-ghost">Update</button>

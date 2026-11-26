@@ -10,6 +10,7 @@ const path = require('path');
 const express = require('express');
 const { registerAi } = require('./ai');
 const { registerLux } = require('./lux');
+const { registerWeather } = require('./weather');
 const metrics = require('./metrics');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -189,8 +190,9 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-registerAi(app, { duffel, broadcast, route, fail });
-registerLux(app, { duffel, broadcast, route, fail, searchOnce, dedupe, buildPassengers });
+const { weatherFor } = registerWeather(app, { duffel, fail });
+registerAi(app, { duffel, broadcast, route, fail, weatherFor });
+registerLux(app, { duffel, broadcast, route, fail, searchOnce, dedupe, buildPassengers, weatherFor });
 
 // ---------------------------------------------------------------------------
 // Places (airport and city lookup)
