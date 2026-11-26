@@ -1,7 +1,7 @@
 // Results page: search, filter and sort offers.
 import { $, $$, esc, api, toast, fmtDay, hhmm, dayDiff, dur, money, ICON, CABIN_LABEL, cityImg } from './util.js';
-import { state, persist, go, searchKey, paxCount } from './state.js';
-import { paxLabel, datesLabel } from './search.js';
+import { state, persist, go, searchKey, paxCount, legsOf } from './state.js';
+import { paxLabel, datesLabel, routeLabel } from './search.js';
 
 const SORTS = {
   recommended: { label: 'Recommended', hint: 'Best balance', fn: (a, b) => a.recommendScore - b.recommendScore },
@@ -32,6 +32,7 @@ const hourOf = (iso) => (iso ? Number(iso.slice(11, 13)) + Number(iso.slice(14, 
 const hh = (h) => (h >= 24 ? '23:59' : `${String(Math.floor(h)).padStart(2, '0')}:00`);
 
 function legsFor(s) {
+  if (s.trip === 'multi') return legsOf(s).map((l) => ({ origin: l.from.code, destination: l.to.code, date: l.date, cabin: s.cabin }));
   const out = { origin: s.from.code, destination: s.to.code, date: s.depart, cabin: s.mixed && s.trip === 'return' ? s.cabinOut : s.cabin };
   if (s.trip !== 'return') return [out];
   return [out, { origin: s.to.code, destination: s.from.code, date: s.ret, cabin: s.mixed ? s.cabinBack : s.cabin }];
@@ -74,10 +75,17 @@ function bagText(baggages) {
   return `${checked ? `${checked} checked` : 'No checked bag'} · ${carry ? `${carry} cabin` : 'No cabin bag'}`;
 }
 
+// "Outbound" and "Return" for a trip home, "Flight 1, 2, 3" for anything else.
+export function sliceLabel(slices, i) {
+  if (slices.length === 1) return 'Outbound';
+  const home = slices.length === 2 && slices[1].destinationCity === slices[0].originCity;
+  return home ? (i ? 'Return' : 'Outbound') : `Flight ${i + 1}`;
+}
+
 export function detailsHtml(o) {
   return o.slices
     .map((sl, si) => {
-      let html = `<h4 class="serif" style="font-weight:400;margin:${si ? '18px' : '0'} 0 6px">${si === 0 ? 'Outbound' : 'Return'} · ${esc(sl.originCity)} → ${esc(sl.destinationCity)}</h4>`;
+      let html = `<h4 class="serif" style="font-weight:400;margin:${si ? '18px' : '0'} 0 6px">${sliceLabel(o.slices, si)} · ${esc(sl.originCity)} → ${esc(sl.destinationCity)}</h4>`;
       sl.segments.forEach((g, i) => {
         if (i > 0) {
           const prev = sl.segments[i - 1];
@@ -147,8 +155,8 @@ export function renderResults(view) {
   view.innerHTML = `
     <section class="band"><img src="${cityImg(s.to.code, 1800)}" alt="" />
       <div class="wrap">
-        <p class="eyebrow" style="margin:0 0 6px">${s.trip === 'return' ? 'Return trip' : 'One way'}</p>
-        <h1>${esc(s.from.name)} → ${esc(s.to.name)}</h1>
+        <p class="eyebrow" style="margin:0 0 6px">${s.trip === 'return' ? 'Return trip' : s.trip === 'multi' ? `Multi-city · ${legs.length} flights` : 'One way'}</p>
+        <h1>${esc(routeLabel(s))}</h1>
         <div class="meta"><span>${esc(d.main)}</span><span class="dot">•</span><span>${esc(p.main)}</span><span class="dot">•</span><span>${esc(p.sub)}</span></div>
         <a href="#/" class="btn btn-ghost btn-sm edit">Edit search</a>
       </div>
@@ -240,12 +248,12 @@ export function renderResults(view) {
         <input type="range" class="range" id="maxp" min="${lo}" max="${hi}" step="1" value="${f.maxPrice ?? hi}" />
         <div class="small muted" id="maxp-label">Up to ${money(f.maxPrice ?? hi, cur)}</div>
       </section>
-      ${legs.map((l, k) => `<section><h4>${legs.length > 1 ? (k ? 'Return times' : 'Outbound times') : 'Times'}</h4>
+      ${legs.map((l, k) => `<section><h4>${s.trip === 'multi' ? `Flight ${k + 1} times <span class="tiny muted">${esc(l.origin)}–${esc(l.destination)}</span>` : legs.length > 1 ? (k ? 'Return times' : 'Outbound times') : 'Times'}</h4>
         ${dual(`t${k}d`, 'Departs', f.times[k].dep)}${dual(`t${k}a`, 'Arrives', f.times[k].arr)}
       </section>`).join('')}
       <section><h4>Journey time</h4>
         <input type="range" class="range" id="maxh" min="${hLo}" max="${hHi}" step="1" value="${f.maxHours ?? hHi}" />
-        <div class="small muted" id="maxh-label">Up to ${f.maxHours ?? hHi} hours each way</div>
+        <div class="small muted" id="maxh-label">Up to ${f.maxHours ?? hHi} hours ${s.trip === 'multi' ? 'per flight' : 'each way'}</div>
       </section>
       <section><h4>Checked bags</h4>
         <div class="seg-btns">${[0, 1, 2].map((n) => `<button type="button" data-bags="${n}" class="${f.checked === n ? 'on' : ''}" ${n && !count((o) => (o.features?.checkedBags || 0) >= n) ? 'disabled' : ''}>${n ? `${n}+ included` : 'Any'}</button>`).join('')}</div>
@@ -319,11 +327,13 @@ export function renderResults(view) {
     const cur = data.offers[0].currency;
     if (p.directOnly) step('direct only', () => f.stops.add('0'), () => f.stops.delete('0'));
     for (const t of p.times || []) {
-      const k = t.direction === 'return' ? 1 : 0;
+      // In multi-city, "outbound" is the first flight and "return" the last.
+      const k = t.direction === 'return' ? f.times.length - 1 : 0;
+      if (t.direction === 'return' && k === 0) continue;
       const key = t.which === 'arrive' ? 'arr' : 'dep';
       if (!f.times[k]) continue;
       const prev = f.times[k][key];
-      step(`${k ? 'return' : 'outbound'} ${key === 'dep' ? 'leaving' : 'landing'} ${hh(t.after)}–${hh(t.before)}`, () => (f.times[k][key] = [t.after, t.before]), () => (f.times[k][key] = prev));
+      step(`${t.direction} ${key === 'dep' ? 'leaving' : 'landing'} ${hh(t.after)}–${hh(t.before)}`, () => (f.times[k][key] = [t.after, t.before]), () => (f.times[k][key] = prev));
     }
     if (p.checkedBags) step(`${p.checkedBags}+ checked bags`, () => (f.checked = Math.min(2, p.checkedBags)), () => (f.checked = 0));
     const loy = (p.loyalty || []).map((c) => c.toUpperCase());
@@ -368,7 +378,7 @@ export function renderResults(view) {
     }
     if (e.target.id === 'maxh') {
       f.maxHours = Number(e.target.value);
-      $('#maxh-label', view).textContent = `Up to ${f.maxHours} hours each way`;
+      $('#maxh-label', view).textContent = `Up to ${f.maxHours} hours ${s.trip === 'multi' ? 'per flight' : 'each way'}`;
       shown = 15;
       return paintList();
     }

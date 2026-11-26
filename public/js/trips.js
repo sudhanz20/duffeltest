@@ -15,8 +15,15 @@ function status(o) {
 function title(o) {
   const a = o.slices[0];
   if (!a) return 'Trip';
-  const back = o.slices.length > 1 && o.slices[o.slices.length - 1].destination === a.origin;
-  return `${a.originCity} ${back ? '⇄' : '→'} ${a.destinationCity}`;
+  const back = o.slices.length === 2 && o.slices[1].destinationCity === a.originCity;
+  if (o.slices.length <= 1 || back) return `${a.originCity} ${back ? '⇄' : '→'} ${a.destinationCity}`;
+  // Multi-city: name each stop once, in order.
+  const stops = [a.originCity];
+  for (const sl of o.slices) {
+    if (stops[stops.length - 1] !== sl.originCity) stops.push(sl.originCity);
+    stops.push(sl.destinationCity);
+  }
+  return stops.join(' → ');
 }
 
 // ---------------------------------------------------------------------------

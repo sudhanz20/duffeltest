@@ -1,6 +1,6 @@
 // Home page: hero, search form, recent searches and destinations.
 import { $, $$, esc, api, toast, fmtDay, ymd, addDays, today, ICON, CABIN_LABEL, img, cityImg, DESTINATIONS, store } from './util.js';
-import { state, persist, go, recentSearches, addRecent, clearRecent, paxCount } from './state.js';
+import { state, persist, go, recentSearches, addRecent, clearRecent, paxCount, legsOf, syncMulti, startMulti, MAX_LEGS } from './state.js';
 import { createCalendar } from './calendar.js';
 import { mountAi } from './ai.js';
 
@@ -29,11 +29,32 @@ export function paxLabel(s) {
 }
 
 export function datesLabel(s) {
+  if (s.trip === 'multi') {
+    const legs = legsOf(s);
+    const first = legs[0] && legs[0].date;
+    const last = legs[legs.length - 1] && legs[legs.length - 1].date;
+    if (!first) return { main: 'Add dates', sub: '' };
+    const main = first === last || !last ? fmtDay(first) : `${fmtDay(first, { day: 'numeric', month: 'short' })} – ${fmtDay(last, { day: 'numeric', month: 'short' })}`;
+    return { main, sub: `Multi-city · ${legs.length} flights` };
+  }
   if (!s.depart) return { main: 'Add dates', sub: '' };
   if (s.trip === 'oneway') return { main: fmtDay(s.depart), sub: 'One way' };
   if (!s.ret) return { main: `${fmtDay(s.depart)} →`, sub: 'Add a return date' };
   const nights = Math.round((new Date(s.ret) - new Date(s.depart)) / 864e5);
   return { main: `${fmtDay(s.depart, { day: 'numeric', month: 'short' })} – ${fmtDay(s.ret, { day: 'numeric', month: 'short' })}`, sub: `${nights} night${nights === 1 ? '' : 's'}` };
+}
+
+// "London → Paris → Rome" for multi-city, "London → Paris" otherwise.
+export function routeLabel(s) {
+  if (s.trip !== 'multi') return `${s.from.name} → ${s.to.name}`;
+  const legs = legsOf(s);
+  const stops = [legs[0].from];
+  for (const l of legs) {
+    if (stops[stops.length - 1] && l.from && stops[stops.length - 1].code !== l.from.code) stops.push(l.from, null);
+    stops.push(l.to);
+  }
+  // A gap (flying out of a different city than you landed in) shows as "…".
+  return stops.map((p) => (p ? p.name : '…')).join(' → ').replace(/ → … → /g, ' … ');
 }
 
 export function renderHome(view) {
@@ -54,7 +75,9 @@ export function renderHome(view) {
           <div class="trip-toggle" role="tablist">
             <button type="button" data-trip="return">Return</button>
             <button type="button" data-trip="oneway">One way</button>
+            <button type="button" data-trip="multi">Multi-city</button>
           </div>
+          <div class="legs hidden" id="legs"></div>
           <div class="search-row">
             <div class="field f-from"><label for="from-in">From</label><input id="from-in" data-place="from" placeholder="City or airport" /><div class="sub" data-sub="from"></div></div>
             <button type="button" class="swap" id="swap" aria-label="Swap origin and destination">${ICON.swap}</button>
@@ -106,6 +129,9 @@ export function renderHome(view) {
   // ---------- Paint the fields ----------
   function paint() {
     $$('[data-trip]', form).forEach((b) => b.classList.toggle('on', b.dataset.trip === s.trip));
+    form.classList.toggle('is-multi', s.trip === 'multi');
+    $('#legs', form).classList.toggle('hidden', s.trip !== 'multi');
+    if (s.trip === 'multi') paintLegs();
     for (const k of ['from', 'to']) {
       const inp = $(`[data-place=${k}]`, form);
       if (document.activeElement !== inp) inp.value = s[k] ? s[k].name : '';
@@ -122,7 +148,17 @@ export function renderHome(view) {
   // ---------- Trip type ----------
   $$('[data-trip]', form).forEach((b) =>
     b.addEventListener('click', () => {
+      const was = s.trip;
       s.trip = b.dataset.trip;
+      if (s.trip === 'multi') {
+        startMulti(s);
+        syncMulti(s);
+        renderLegs();
+      } else if (was === 'multi') {
+        // Back to a simple trip: keep the first flight's route and date.
+        const first = s.legs && s.legs[0];
+        if (first) Object.assign(s, { from: first.from, to: first.to, depart: first.date });
+      }
       if (s.trip === 'return' && (!s.ret || s.ret <= s.depart)) s.ret = ymd(addDays(new Date(s.depart), 7));
       persist('search');
       paint();
@@ -136,8 +172,7 @@ export function renderHome(view) {
   });
 
   // ---------- Airport lookup ----------
-  for (const inp of $$('[data-place]', form)) {
-    const key = inp.dataset.place;
+  function bindPlace(inp, onChoose) {
     let timer = null;
     let items = [];
     let hl = -1;
@@ -147,13 +182,9 @@ export function renderHome(view) {
     list.addEventListener('mousedown', (e) => e.preventDefault());
 
     const choose = (it) => {
-      s[key] = it;
-      persist('search');
       close();
       inp.blur();
-      paint();
-      if (key === 'from') $('[data-place=to]', form).focus();
-      else if (!s.depart) $('#dates-btn', form).click();
+      onChoose(it);
     };
 
     const renderList = () => {
@@ -216,6 +247,105 @@ export function renderHome(view) {
       paint();
     }, 150));
   }
+  for (const inp of $$('[data-place]', form)) {
+    const key = inp.dataset.place;
+    bindPlace(inp, (it) => {
+      s[key] = it;
+      persist('search');
+      paint();
+      if (key === 'from') $('[data-place=to]', form).focus();
+      else if (!s.depart) $('#dates-btn', form).click();
+    });
+  }
+
+  // ---------- Multi-city flights ----------
+  const legsBox = $('#legs', form);
+  const placeSub = (p) => (p ? `${p.code} · ${p.sub || ''}` : 'City or airport');
+  function renderLegs() {
+    if (!s.legs) return;
+    close();
+    legsBox.innerHTML = `${s.legs
+      .map(
+        (l, i) => `<div class="leg-row" data-leg="${i}">
+          <span class="leg-no">${i + 1}</span>
+          <div class="field"><label>From</label><input data-leg-place="from" placeholder="City or airport" /><div class="sub" data-leg-sub="from"></div></div>
+          <div class="field"><label>To</label><input data-leg-place="to" placeholder="City or airport" /><div class="sub" data-leg-sub="to"></div></div>
+          <div class="field f-leg-date" role="button" tabindex="0" data-leg-date><span class="label">Date</span><span class="value" data-leg-day></span></div>
+          ${s.legs.length > 2 ? `<button type="button" class="leg-del" data-leg-del="${i}" aria-label="Remove flight ${i + 1}">×</button>` : '<span></span>'}
+        </div>`
+      )
+      .join('')}
+      ${s.legs.length < MAX_LEGS ? `<button type="button" class="btn-link small add-leg" id="add-leg">+ Add another flight</button>` : `<p class="tiny muted add-leg">Up to ${MAX_LEGS} flights in one booking.</p>`}`;
+    for (const row of $$('[data-leg]', legsBox)) {
+      const i = Number(row.dataset.leg);
+      for (const inp of $$('[data-leg-place]', row)) {
+        const k = inp.dataset.legPlace;
+        bindPlace(inp, (it) => {
+          s.legs[i][k] = it;
+          // Most trips carry on from where the last flight landed.
+          if (k === 'to' && s.legs[i + 1] && !s.legs[i + 1].from) s.legs[i + 1].from = it;
+          syncMulti(s);
+          persist('search');
+          paint();
+          if (k === 'from') $('[data-leg-place=to]', row).focus();
+          else if (!s.legs[i].date) $('[data-leg-date]', row).click();
+        });
+      }
+    }
+    paintLegs();
+  }
+  function paintLegs() {
+    if (!s.legs || $$('[data-leg]', legsBox).length !== s.legs.length) return renderLegs();
+    for (const row of $$('[data-leg]', legsBox)) {
+      const l = s.legs[Number(row.dataset.leg)];
+      for (const k of ['from', 'to']) {
+        const inp = $(`[data-leg-place=${k}]`, row);
+        if (document.activeElement !== inp) inp.value = l[k] ? l[k].name : '';
+        $(`[data-leg-sub=${k}]`, row).textContent = placeSub(l[k]);
+      }
+      $('[data-leg-day]', row).textContent = l.date ? fmtDay(l.date) : 'Add date';
+    }
+  }
+  legsBox.addEventListener('click', (e) => {
+    if (e.target.id === 'add-leg') {
+      const last = s.legs[s.legs.length - 1];
+      s.legs.push({ from: last.to, to: null, date: last.date ? ymd(addDays(new Date(last.date), 3)) : null });
+      persist('search');
+      renderLegs();
+      $$('[data-leg-place=to]', legsBox).pop().focus();
+      return;
+    }
+    const del = e.target.closest('[data-leg-del]');
+    if (del) {
+      s.legs.splice(Number(del.dataset.legDel), 1);
+      syncMulti(s);
+      persist('search');
+      renderLegs();
+      paint();
+      return;
+    }
+    const field = e.target.closest('[data-leg-date]');
+    if (!field || e.target.closest('.popover')) return;
+    if (open && open.field === field) return close();
+    const i = Number(field.closest('[data-leg]').dataset.leg);
+    const prev = s.legs[i - 1] && s.legs[i - 1].date;
+    const cal = createCalendar({
+      mode: 'single',
+      start: s.legs[i].date,
+      min: prev && prev > ymd(today()) ? prev : undefined,
+      onChange(a) {
+        s.legs[i].date = a;
+        // Keep the flights in order: later flights cannot leave before this one.
+        for (let k = i + 1; k < s.legs.length; k++) if (s.legs[k].date && s.legs[k].date < a) s.legs[k].date = a;
+        syncMulti(s);
+        persist('search');
+        paint();
+        close();
+      },
+      onDone: () => close(),
+    });
+    openPop(cal, field);
+  });
 
   // ---------- Dates ----------
   $('#dates-btn', form).addEventListener('click', (e) => {
@@ -346,6 +476,14 @@ export function renderHome(view) {
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     close();
+    if (s.trip === 'multi') {
+      const bad = s.legs.findIndex((l) => !l.from || !l.to || !l.date);
+      if (bad >= 0) return toast(`Flight ${bad + 1} needs a from, a to and a date.`, 'err');
+      const same = s.legs.findIndex((l) => l.from.code === l.to.code);
+      if (same >= 0) return toast(`Flight ${same + 1} starts and ends in the same place.`, 'err');
+      if (s.legs.some((l, i) => i && l.date < s.legs[i - 1].date)) return toast('Put the flights in date order.', 'err');
+      syncMulti(s);
+    }
     if (!s.from || !s.to) return toast('Choose where you are flying from and to.', 'err');
     if (s.from.code === s.to.code) return toast('From and To are the same place.', 'err');
     if (!s.depart) return toast('Choose a departure date.', 'err');
@@ -371,13 +509,16 @@ export function renderHome(view) {
   mountAi($('#ai', view), {
     onSearch(found) {
       Object.assign(s, found);
+      syncMulti(s);
       persist('search');
       addRecent(s);
       go('#/results');
     },
     onUseForm(found) {
       for (const [k, v] of Object.entries(found)) if (v !== null && v !== undefined) s[k] = v;
+      syncMulti(s);
       persist('search');
+      if (s.trip === 'multi') renderLegs();
       paint();
       setMode('classic');
     },
@@ -393,7 +534,7 @@ export function renderHome(view) {
         const d = datesLabel(r);
         const p = paxLabel(r);
         return `<button type="button" class="recent-card" data-r="${i}"><img loading="lazy" src="${cityImg(r.to.code, 200)}" alt="" />
-          <div style="min-width:0"><b>${esc(r.from.name)} → ${esc(r.to.name)}</b><div class="small muted">${esc(d.main)}</div><div class="tiny muted">${esc(p.main)} · ${esc(p.sub)}</div></div></button>`;
+          <div style="min-width:0"><b>${esc(routeLabel(r))}</b><div class="small muted">${esc(d.main)}</div><div class="tiny muted">${esc(p.main)} · ${esc(p.sub)}</div></div></button>`;
       })
       .join('');
   }
@@ -403,7 +544,7 @@ export function renderHome(view) {
     const r = recentSearches()[Number(b.dataset.r)];
     if (!r) return;
     const { at, ...rest } = r;
-    Object.assign(s, rest);
+    Object.assign(s, { legs: null }, rest);
     persist('search');
     addRecent(s);
     go('#/results');
@@ -425,6 +566,7 @@ export function renderHome(view) {
     })
   );
 
+  if (s.trip === 'multi') renderLegs();
   if (s.depart && s.depart < ymd(today())) {
     s.depart = ymd(addDays(today(), 30));
     s.ret = ymd(addDays(today(), 37));
